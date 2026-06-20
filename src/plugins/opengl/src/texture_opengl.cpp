@@ -19,7 +19,11 @@ TextureOpenGL::TextureOpenGL(VideoOpenGL& parent, Vector2i size)
 
 TextureOpenGL::~TextureOpenGL()
 {
-	waitForOpenGLLoad();
+	try {
+		waitForOpenGLLoad();
+	} catch (...) {
+		// A failed async load rethrows here and std::terminate()s the app on shutdown; swallow it.
+	}
 	clearTexture();
 }
 
