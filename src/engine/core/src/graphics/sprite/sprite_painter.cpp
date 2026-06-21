@@ -256,7 +256,7 @@ bool SpritePainterMaterialParamUpdater::needsToPreProcessessMaterial(const Sprit
 }
 
 SpritePainter::SpritePainter()
-	: memoryPool(256 * 1024)
+	: memoryPool(16 * 1024 * 1024)   // bumped from 256 KB: populated iso maps batch thousands of sprites
 {
 }
 
