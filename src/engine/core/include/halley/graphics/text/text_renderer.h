@@ -107,6 +107,11 @@ namespace Halley
 		TextRenderer clone() const;
 
 		void generateSprites() const;
+		gsl::span<const Sprite> getSprites() const
+		{
+			generateSprites();
+			return gsl::span<const Sprite>(spritesCache.data(), spritesCache.size());
+		}
 		void draw(Painter& painter, const std::optional<Rect4f>& extClip = {}) const;
 
 		void setSpriteFilter(SpriteFilter f);
