@@ -21,6 +21,12 @@ set(SOURCES
 
         "stb_image/stb_image.c"
 
+        "imgui/imgui.cpp"
+        "imgui/imgui_draw.cpp"
+        "imgui/imgui_tables.cpp"
+        "imgui/imgui_widgets.cpp"
+        "imgui/imgui_demo.cpp"
+
         "tiny-aes/aes.c"
 
         "tinyxml/ticpp.cpp"
@@ -114,7 +120,14 @@ set(HEADERS
         "miniz/miniz.h"
 
         "stb_image/stb_image.h"
-        
+
+        "imgui/imconfig.h"
+        "imgui/imgui.h"
+        "imgui/imgui_internal.h"
+        "imgui/imstb_rectpack.h"
+        "imgui/imstb_textedit.h"
+        "imgui/imstb_truetype.h"
+
         "tiny-aes/aes.h"
         "tiny-aes/aes.hpp"
         
@@ -193,6 +206,19 @@ endif()
 if(MSVC)
         add_definitions("-wd4996 -wd4244 -wd4100 -wd4267 -wd4189 -wd4305 -wd4127 -wd4703 -wd4706")
         add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
+
+# Dear ImGui is vendored verbatim; never let its warnings break the strict engine build.
+set(IMGUI_SOURCES
+        "imgui/imgui.cpp"
+        "imgui/imgui_draw.cpp"
+        "imgui/imgui_tables.cpp"
+        "imgui/imgui_widgets.cpp"
+        "imgui/imgui_demo.cpp")
+if(MSVC)
+        set_source_files_properties(${IMGUI_SOURCES} PROPERTIES COMPILE_FLAGS "/w")
+else()
+        set_source_files_properties(${IMGUI_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
 endif()
 
 file (GLOB_RECURSE OGG_FILES "libogg/*.c")

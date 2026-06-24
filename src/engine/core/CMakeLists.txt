@@ -1,9 +1,11 @@
 project (halley-engine)
 
-include_directories(${OPENSSL_INCLUDE_DIR} "include" "include/halley/core" "../../../shared_gen/cpp"  "../../contrib/libogg/include" "../../contrib/libogg/lib" "../../contrib/libvorbis/include" "../../contrib/libvorbis/lib"  "../../contrib/yaml-cpp/include" "../../contrib/lua/src")
+include_directories(${OPENSSL_INCLUDE_DIR} "include" "include/halley/core" "../../../shared_gen/cpp"  "../../contrib" "../../contrib/libogg/include" "../../contrib/libogg/lib" "../../contrib/libvorbis/include" "../../contrib/libvorbis/lib"  "../../contrib/yaml-cpp/include" "../../contrib/lua/src")
 
 set(SOURCES
         "src/api/halley_api.cpp"
+
+        "src/devtools/halley_imgui.cpp"
 
         "src/dummy/dummy_analytics.cpp"
         "src/dummy/dummy_audio.cpp"
@@ -432,6 +434,8 @@ set(SOURCES
 
 set(HEADERS
         "../../../include/halley_version.hpp"
+
+        "include/halley/devtools/halley_imgui.h"
 
         "src/dummy/dummy_analytics.h"
         "src/dummy/dummy_audio.h"

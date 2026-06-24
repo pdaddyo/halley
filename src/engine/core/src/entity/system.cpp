@@ -4,8 +4,11 @@
 #include "halley/support/logger.h"
 #include "halley/support/profiler.h"
 #include "halley/utils/algorithm.h"
+#include <chrono>
 
 using namespace Halley;
+
+bool System::sTimingEnabled = false;
 
 SystemMessageBridge::SystemMessageBridge(System& system)
 	: system(&system)
@@ -218,6 +221,10 @@ void System::doUpdate(Time time) {
 	const auto trace = StackDebugTrace("name", name);
 	ProfilerEvent event(ProfilerEventType::WorldSystemUpdate, name, reinterpret_cast<uint64_t>(this));
 
+	// Optional per-system timing (off by default → no clock reads, zero per-frame cost).
+	const bool timing = sTimingEnabled;
+	const auto t0 = timing ? std::chrono::high_resolution_clock::now() : std::chrono::high_resolution_clock::time_point{};
+
 	if (!messageTypesReceived.empty()) {
 		processMessages();
 	}
@@ -225,9 +232,14 @@ void System::doUpdate(Time time) {
 		world->purgeMessages(systemId, messageTypesSentThisUpdate);
 		messageTypesSentThisUpdate.clear();
 	}
-	
+
 	updateBase(time);
 	dispatchMessages();
+
+	if (timing) {
+		lastUpdateElapsedNanoSeconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::high_resolution_clock::now() - t0).count();
+	}
 }
 
 void System::doRender(RenderContext& rc) {

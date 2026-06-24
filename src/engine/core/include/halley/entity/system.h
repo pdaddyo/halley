@@ -52,6 +52,14 @@ namespace Halley {
 		const String& getName() const { return name; }
 		void setName(String n) { name = std::move(n); }
 		size_t getEntityCount() const;
+
+		// Debug-only profiling: last doUpdate() wall-time in nanoseconds. Only populated while
+		// timing collection is enabled; it is OFF by default so there is zero per-frame cost in
+		// a normal run (the debug overlay enables it only while its Systems panel is open).
+		int64_t getLastUpdateElapsedNanoSeconds() const { return lastUpdateElapsedNanoSeconds; }
+		static void setTimingCollectionEnabled(bool enabled) { sTimingEnabled = enabled; }
+		static bool isTimingCollectionEnabled() { return sTimingEnabled; }
+
 		bool tryInit();
 
 		virtual bool canHandleSystemMessage(int messageId, const String& targetSystem) const { return false; }
@@ -202,6 +210,8 @@ namespace Halley {
 		String name;
 		int systemId = -1;
 		bool initialised = false;
+		int64_t lastUpdateElapsedNanoSeconds = 0; // debug-only; see setTimingCollectionEnabled
+		static bool sTimingEnabled;               // gates the (optional) per-system timing
 
 		void doUpdate(Time time);
 		void doRender(RenderContext& rc);
