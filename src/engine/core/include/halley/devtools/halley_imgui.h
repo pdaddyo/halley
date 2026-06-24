@@ -2,7 +2,9 @@
 #include <halley/maths/vector2.h>
 #include <halley/maths/vector4.h>
 #include <halley/time/halleytime.h>
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace Halley
@@ -13,6 +15,7 @@ namespace Halley
 	class Painter;
 	class Texture;
 	class Material;
+	class MaterialDefinition;
 	class String;
 
 	// Vertex layout the ImGui material must declare (in this order):
@@ -44,7 +47,11 @@ namespace Halley
 	public:
 		// materialName must resolve to a MaterialDefinition matching HalleyImGuiVertex and
 		// exposing a sampler2D parameter named "tex" (e.g. authored as "Stranded/Imgui").
-		HalleyImGui(Resources& resources, VideoAPI& video, const String& materialName);
+		// fontData (optional): a TTF blob (e.g. embedded) loaded at fontPixelSize; if null, the
+		// built-in ImGui font is used. The blob is baked into the atlas; it is NOT freed (the
+		// caller keeps ownership, e.g. a static array).
+		HalleyImGui(Resources& resources, VideoAPI& video, const String& materialName,
+			const void* fontData = nullptr, int fontDataSize = 0, float fontPixelSize = 13.0f);
 		~HalleyImGui();
 
 		HalleyImGui(const HalleyImGui&) = delete;
@@ -59,8 +66,11 @@ namespace Halley
 		// Safe to call even if newFrame() was not called this frame (it is a no-op then).
 		void render(Painter& painter);
 
-		// Whether ImGui currently wants exclusive mouse / keyboard input (i.e. the cursor is
-		// over a window, or a text field is focused). Use these to suppress game input.
+		// Register a texture for use as an ImGui image (ImGui::Image). Returns a stable id to
+		// pass as ImTextureID. Idempotent per texture pointer; the backend keeps the texture (and
+		// a matching material) alive. Use for drawing game sprites/atlases in the overlay.
+		uint64_t registerTexture(std::shared_ptr<const Texture> texture);
+
 		bool wantCaptureMouse() const;
 		bool wantCaptureKeyboard() const;
 
@@ -69,8 +79,12 @@ namespace Halley
 
 	private:
 		void* context = nullptr; // ImGuiContext* (kept opaque to keep imgui.h out of this header)
+		std::shared_ptr<const MaterialDefinition> materialDef; // to clone a material per texture
 		std::shared_ptr<Texture> fontTexture;
-		std::shared_ptr<Material> material;
+		uint64_t fontTexId = 0;
+		// One material per bound texture (ImGui mixes the font atlas with game sprites). Keyed by
+		// the ImTextureID. A separate material per texture avoids Painter batching the wrong texture.
+		std::unordered_map<uint64_t, std::shared_ptr<Material>> materials;
 		bool frameStarted = false;
 
 		// Per-draw-command scratch (reused every frame). Painter::draw requires the index
@@ -82,6 +96,7 @@ namespace Halley
 		std::vector<unsigned long long> vtxRemapGen; // generation stamp per original vertex
 		unsigned long long remapGen = 0;    // monotonic; never resets, so stamps never collide
 
-		void buildFont(VideoAPI& video);
+		void buildFont(VideoAPI& video, const void* fontData, int fontDataSize, float fontPixelSize);
+		void applyTheme();
 	};
 }

@@ -97,7 +97,8 @@ namespace {
 	}
 }
 
-HalleyImGui::HalleyImGui(Resources& resources, VideoAPI& video, const String& materialName)
+HalleyImGui::HalleyImGui(Resources& resources, VideoAPI& video, const String& materialName,
+	const void* fontData, int fontDataSize, float fontPixelSize)
 {
 	IMGUI_CHECKVERSION();
 	auto* ctx = ImGui::CreateContext();
@@ -112,20 +113,13 @@ HalleyImGui::HalleyImGui(Resources& resources, VideoAPI& video, const String& ma
 	io.BackendPlatformName = "halley_input";
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-	ImGui::StyleColorsDark();
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 4.0f;
-	style.FrameRounding = 3.0f;
-	style.GrabRounding = 3.0f;
-	style.ScrollbarRounding = 3.0f;
-	style.Colors[ImGuiCol_WindowBg].w = 0.92f;
+	applyTheme();
 
-	buildFont(video);
+	// The material definition is cloned once per bound texture (the font atlas + any game sprite
+	// textures), so different ImGui images never get batched onto the wrong texture.
+	materialDef = resources.get<MaterialDefinition>(materialName);
 
-	material = resources.get<MaterialDefinition>(materialName)->createMaterial();
-	if (material && fontTexture) {
-		material->set("tex", fontTexture);
-	}
+	buildFont(video, fontData, fontDataSize, fontPixelSize);
 }
 
 HalleyImGui::~HalleyImGui()
@@ -136,9 +130,83 @@ HalleyImGui::~HalleyImGui()
 	}
 }
 
-void HalleyImGui::buildFont(VideoAPI& video)
+void HalleyImGui::applyTheme()
+{
+	ImGui::StyleColorsDark();
+	ImGuiStyle& s = ImGui::GetStyle();
+	s.WindowRounding = 5.0f;
+	s.ChildRounding = 5.0f;
+	s.FrameRounding = 4.0f;
+	s.PopupRounding = 4.0f;
+	s.GrabRounding = 4.0f;
+	s.TabRounding = 4.0f;
+	s.ScrollbarRounding = 4.0f;
+	s.WindowBorderSize = 1.0f;
+	s.FrameBorderSize = 0.0f;
+	s.WindowPadding = ImVec2(10.0f, 8.0f);
+	s.FramePadding = ImVec2(8.0f, 4.0f);
+	s.ItemSpacing = ImVec2(8.0f, 6.0f);
+	s.GrabMinSize = 9.0f;
+	s.ScrollbarSize = 12.0f;
+	s.WindowTitleAlign = ImVec2(0.0f, 0.5f);
+
+	ImVec4* c = s.Colors;
+	const ImVec4 accent(0.26f, 0.59f, 0.98f, 1.0f);
+	const ImVec4 accentDim(0.26f, 0.59f, 0.98f, 0.55f);
+	c[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.105f, 0.12f, 0.96f);
+	c[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.16f);
+	c[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.105f, 0.12f, 0.98f);
+	c[ImGuiCol_Border] = ImVec4(0.0f, 0.0f, 0.0f, 0.55f);
+	c[ImGuiCol_FrameBg] = ImVec4(0.16f, 0.17f, 0.19f, 1.0f);
+	c[ImGuiCol_FrameBgHovered] = ImVec4(0.22f, 0.24f, 0.27f, 1.0f);
+	c[ImGuiCol_FrameBgActive] = ImVec4(0.26f, 0.28f, 0.32f, 1.0f);
+	c[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.085f, 0.10f, 1.0f);
+	c[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.135f, 0.17f, 1.0f);
+	c[ImGuiCol_MenuBarBg] = ImVec4(0.12f, 0.125f, 0.14f, 1.0f);
+	c[ImGuiCol_Header] = ImVec4(0.20f, 0.30f, 0.45f, 0.65f);
+	c[ImGuiCol_HeaderHovered] = ImVec4(0.24f, 0.40f, 0.62f, 0.80f);
+	c[ImGuiCol_HeaderActive] = accentDim;
+	c[ImGuiCol_Button] = ImVec4(0.20f, 0.22f, 0.26f, 1.0f);
+	c[ImGuiCol_ButtonHovered] = ImVec4(0.26f, 0.40f, 0.60f, 1.0f);
+	c[ImGuiCol_ButtonActive] = accent;
+	c[ImGuiCol_SliderGrab] = accent;
+	c[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.70f, 1.0f, 1.0f);
+	c[ImGuiCol_CheckMark] = ImVec4(0.45f, 0.72f, 1.0f, 1.0f);
+	c[ImGuiCol_Tab] = ImVec4(0.13f, 0.15f, 0.18f, 1.0f);
+	c[ImGuiCol_TabHovered] = ImVec4(0.26f, 0.40f, 0.60f, 0.9f);
+	c[ImGuiCol_TabActive] = ImVec4(0.20f, 0.32f, 0.48f, 1.0f);
+	c[ImGuiCol_TabUnfocused] = ImVec4(0.11f, 0.12f, 0.14f, 1.0f);
+	c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16f, 0.20f, 0.26f, 1.0f);
+	c[ImGuiCol_Separator] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
+	c[ImGuiCol_TableHeaderBg] = ImVec4(0.16f, 0.17f, 0.20f, 1.0f);
+	c[ImGuiCol_TableBorderStrong] = ImVec4(0.0f, 0.0f, 0.0f, 0.6f);
+	c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+}
+
+uint64_t HalleyImGui::registerTexture(std::shared_ptr<const Texture> texture)
+{
+	if (!texture || !materialDef) {
+		return 0;
+	}
+	const uint64_t id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(texture.get()));
+	if (materials.find(id) == materials.end()) {
+		auto mat = materialDef->createMaterial();
+		mat->set("tex", texture);
+		materials.emplace(id, std::move(mat));
+	}
+	return id;
+}
+
+void HalleyImGui::buildFont(VideoAPI& video, const void* fontData, int fontDataSize, float fontPixelSize)
 {
 	ImGuiIO& io = ImGui::GetIO();
+	if (fontData && fontDataSize > 0) {
+		ImFontConfig cfg;
+		cfg.FontDataOwnedByAtlas = false; // caller owns the blob (e.g. a static array)
+		io.Fonts->AddFontFromMemoryTTF(const_cast<void*>(fontData), fontDataSize,
+			fontPixelSize > 0.0f ? fontPixelSize : 13.0f, &cfg);
+	}
+
 	unsigned char* pixels = nullptr;
 	int w = 0, h = 0;
 	io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
@@ -159,7 +227,8 @@ void HalleyImGui::buildFont(VideoAPI& video)
 	tex->load(std::move(desc));
 	fontTexture = std::move(tex);
 
-	io.Fonts->SetTexID(static_cast<ImTextureID>(reinterpret_cast<intptr_t>(fontTexture.get())));
+	fontTexId = registerTexture(fontTexture);
+	io.Fonts->SetTexID(static_cast<ImTextureID>(fontTexId));
 }
 
 void HalleyImGui::newFrame(InputAPI& input, Vector2f displaySize, Time deltaTime)
@@ -253,7 +322,7 @@ void HalleyImGui::render(Painter& painter)
 	frameStarted = false;
 
 	ImDrawData* dd = ImGui::GetDrawData();
-	if (!dd || dd->CmdListsCount == 0 || !material || !fontTexture) {
+	if (!dd || dd->CmdListsCount == 0 || materials.empty() || !fontTexture) {
 		return;
 	}
 
@@ -318,9 +387,19 @@ void HalleyImGui::render(Painter& painter)
 				continue;
 			}
 
+			// Pick the material for this command's texture (font atlas or a registered sprite).
+			const uint64_t texId = static_cast<uint64_t>(cmd.GetTexID());
+			auto matIt = materials.find(texId);
+			if (matIt == materials.end()) {
+				matIt = materials.find(fontTexId);
+			}
+			if (matIt == materials.end()) {
+				continue;
+			}
+
 			painter.setClip(Rect4i(static_cast<int>(cx1), static_cast<int>(cy1),
 				static_cast<int>(cx2 - cx1), static_cast<int>(cy2 - cy1)));
-			painter.draw(material, cmdVerts.size(), cmdVerts.data(),
+			painter.draw(matIt->second, cmdVerts.size(), cmdVerts.data(),
 				gsl::span<const IndexType>(reinterpret_cast<const IndexType*>(cmdIdx.data()), cmdIdx.size()),
 				PrimitiveType::Triangle);
 		}
