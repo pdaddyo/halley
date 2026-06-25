@@ -145,6 +145,10 @@ namespace Halley
 		virtual void setVsync(bool vsync) = 0;
 		virtual void swap() = 0;
 		virtual Rect4i getWindowRect() const = 0;
+		// Size of the actual drawable/backbuffer in physical pixels. On high-DPI (e.g. macOS Retina)
+		// this is larger than getWindowRect() (which is in logical points); rendering at this size
+		// keeps pixel art crisp instead of being upscaled by the OS. Defaults to the logical size.
+		virtual Vector2i getDrawableSize() const { return getWindowRect().getSize(); }
 		virtual const WindowDefinition& getDefinition() const = 0;
 
 		virtual void* getNativeHandle() const { return nullptr; }

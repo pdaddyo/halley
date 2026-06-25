@@ -613,12 +613,17 @@ void Core::render()
 		}
 
 		if (currentStage) {
-			auto windowSize = api->video->getWindow().getDefinition().getSize();
-			if (windowSize != prevWindowSize) {
+			// Track the physical drawable size (not logical window size) so the target rebuilds on resizes
+				// AND DPI changes (e.g. moving between a Retina and non-Retina display where the logical size
+				// is unchanged). Keeps rendering at native resolution = crisp pixels at any window size.
+				auto drawableSize = api->video->getWindow().getDrawableSize();
+			if (drawableSize != prevWindowSize) {
 				screenTarget.reset();
 				screenTarget = api->video->createScreenRenderTarget();
-				camera = std::make_unique<Camera>(Vector2f(windowSize) * 0.5f);
-				prevWindowSize = windowSize;
+				// Centre the default camera on the physical drawable (high-DPI aware) so it matches the
+				// screen render target, which is sized to the drawable rather than logical points.
+				camera = std::make_unique<Camera>(Vector2f(drawableSize) * 0.5f);
+				prevWindowSize = drawableSize;
 			}
 			RenderContext context(*painter, *camera, *screenTarget);
 

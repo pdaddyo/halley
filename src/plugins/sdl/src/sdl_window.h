@@ -17,6 +17,7 @@ namespace Halley
 		void setVsync(bool vsync) override;
 		void swap() override;
 		Rect4i getWindowRect() const override;
+		Vector2i getDrawableSize() const override;
 
 		int getId() const;
 		void resize(Rect4i size);

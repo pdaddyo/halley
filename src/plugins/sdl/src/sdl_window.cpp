@@ -169,6 +169,19 @@ Rect4i SDLWindow::getWindowRect() const
 	return Rect4i(x, y, w, h);
 }
 
+Vector2i SDLWindow::getDrawableSize() const
+{
+	// Physical backbuffer size in pixels. On high-DPI (macOS Retina) this is 2x the logical
+	// window size; rendering at it keeps pixel art crisp rather than OS-upscaled. Falls back to
+	// the logical size if the drawable can't be queried.
+	int w = 0, h = 0;
+	SDL_GL_GetDrawableSize(window, &w, &h);
+	if (w <= 0 || h <= 0) {
+		return getWindowRect().getSize();
+	}
+	return Vector2i(w, h);
+}
+
 void SDLWindow::setTitleColour(Colour4f bgCol, Colour4f textCol)
 {
 #ifdef _WIN32

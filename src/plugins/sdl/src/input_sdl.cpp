@@ -69,7 +69,20 @@ void InputSDL::setResources(Resources& resources)
 		std::cout << "\tLoaded " << ConsoleColour(Console::DARK_GREY) << toString(added) << ConsoleColour() << " SDL controller mappings.\n";
 	}
 
-	mouseRemap = [] (Vector2i p) { return Vector2f(p); };
+	mouseRemap = [this] (Vector2i p) -> Vector2f {
+		// High-DPI: SDL reports the mouse in logical points, but we render at the physical drawable
+		// size (see SDLWindow::getDrawableSize), so scale the mouse up by the drawable/logical ratio
+		// to land in render-target space. On non-high-DPI displays the ratio is 1 (no-op).
+		if (const auto window = system.getWindow(0)) {
+			const auto logical = window->getWindowRect().getSize();
+			const auto drawable = window->getDrawableSize();
+			if (logical.x > 0 && logical.y > 0 && drawable != logical) {
+				return Vector2f(p) * Vector2f(static_cast<float>(drawable.x) / static_cast<float>(logical.x),
+				                              static_cast<float>(drawable.y) / static_cast<float>(logical.y));
+			}
+		}
+		return Vector2f(p);
+	};
 
 	keyboards.push_back(std::unique_ptr<InputKeyboardSDL>(new InputKeyboardSDL(system.getClipboard())));
 	mice.push_back(std::unique_ptr<InputMouseSDL>(new InputMouseSDL()));

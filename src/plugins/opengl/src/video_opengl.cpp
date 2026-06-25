@@ -287,7 +287,9 @@ std::unique_ptr<Shader> VideoOpenGL::createShader(const ShaderDefinition& defini
 
 std::unique_ptr<ScreenRenderTarget> VideoOpenGL::createScreenRenderTarget()
 {
-	return std::make_unique<ScreenRenderTargetOpenGL>(Rect4i({}, getWindow().getWindowRect().getSize()));
+	// Render at the physical drawable size (high-DPI/Retina aware) so pixel art stays crisp instead
+	// of being rendered at the logical size and OS-upscaled. Non-high-DPI: drawable == logical.
+	return std::make_unique<ScreenRenderTargetOpenGL>(Rect4i({}, getWindow().getDrawableSize()));
 }
 
 std::unique_ptr<TextureRenderTarget> VideoOpenGL::createTextureRenderTarget()
