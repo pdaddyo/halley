@@ -52,8 +52,14 @@ void TextureOpenGL::doLoad(TextureDescriptor& d)
 
 	GLUtils glUtils;
     glUtils.setTextureUnit(0);
+	// glGenTextures can hand back an id that was freed by a previously-deleted texture (e.g. a
+	// torn-down RenderSurface). The GLUtils bind cache is thread_local and is NOT invalidated on
+	// glDeleteTextures, so it can still believe that id is bound and skip the real glBindTexture --
+	// then create()/updateImage below would upload into the wrong (or zero) texture, leaving this
+	// one with no storage ("texture unloadable"). Force a bind through 0 so the real bind always runs.
+	glUtils.bindTexture(0);
 	glUtils.bindTexture(textureId);
-	
+
 	if (texSize != d.size) {
 		create(d.size, d.format, d.useMipMap, d.useFiltering, d.addressMode, d.pixelData);
 	} else if (!d.pixelData.empty()) {
