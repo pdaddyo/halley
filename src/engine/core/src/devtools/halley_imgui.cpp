@@ -35,7 +35,11 @@ using namespace Halley;
 // SDL_GLContext are opaque pointers, so void* matches at the ABI level under C linkage.
 extern "C" {
 	int SDL_GL_MakeCurrent(void* window, void* context);
+	int SDL_GL_SetSwapInterval(int interval);
+	int SDL_GL_GetSwapInterval(void);
 	void SDL_SetWindowTitle(void* window, const char* title);
+	void SDL_SetWindowPosition(void* window, int x, int y);
+	void SDL_SetWindowSize(void* window, int w, int h);
 	void SDL_RaiseWindow(void* window);
 	unsigned int SDL_GetWindowFlags(void* window);
 	unsigned int SDL_GetGlobalMouseState(int* x, int* y);
@@ -166,13 +170,21 @@ HalleyImGui::~HalleyImGui()
 	if (context) {
 		ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
 		if (viewportsEnabled) {
-			// Close any secondary OS windows (calls Platform_DestroyWindow, which destroys the SDL
-			// windows) and free the app-owned main viewport's data, which ImGui never destroys itself.
+			// Close all secondary OS windows. DestroyPlatformWindows() runs Platform_DestroyWindow for
+			// every viewport INCLUDING the app-owned main one (which deletes + nulls its data but skips
+			// the SDL destroy, since its window is null). The delete below is a null-safe fallback for
+			// the rare case the main viewport's platform window was never created.
 			ImGui::DestroyPlatformWindows();
 			if (ImGuiViewport* mv = ImGui::GetMainViewport()) {
 				delete static_cast<ImGuiViewportData*>(mv->PlatformUserData);
 				mv->PlatformUserData = nullptr;
 			}
+			// Shut the platform backend down cleanly: clearing BackendPlatformUserData + the viewport
+			// flags is what DestroyContext's sanity check looks for ("Forgot to shutdown Platform backend?").
+			ImGuiIO& io = ImGui::GetIO();
+			io.BackendPlatformUserData = nullptr;
+			io.BackendFlags &= ~(ImGuiBackendFlags_PlatformHasViewports | ImGuiBackendFlags_RendererHasViewports);
+			viewportsEnabled = false;
 		}
 		ImGui::DestroyContext(static_cast<ImGuiContext*>(context));
 		context = nullptr;
@@ -634,8 +646,8 @@ void HalleyImGui::enableViewports(SystemAPI& sys, VideoAPI& vid)
 	setupPlatformCallbacks();
 	updateMonitors();
 
-	// Seed the app-owned main viewport. It is never created/destroyed through the callbacks, so its
-	// PlatformUserData is owned (and freed) here, not by ImGui.
+	// Seed the app-owned main viewport: it wraps the existing engine window, so Platform_CreateWindow
+	// is never called for it. Its PlatformUserData is freed at teardown (see the destructor).
 	ImGuiViewport* mv = ImGui::GetMainViewport();
 	mv->PlatformHandle = mainWindow;
 	mv->PlatformHandleRaw = mainWindow->getImplementationPointer("SDL_Window");
@@ -687,10 +699,13 @@ void HalleyImGui::setupPlatformCallbacks()
 		}
 	};
 
+	// Set position/size straight on the SDL window rather than via Window::update(), which re-issues
+	// SDL_SetWindowFullscreen/Bordered/RestoreWindow on every callback (a per-drag-frame flicker on
+	// Windows). Platform_GetWindowPos/Size read getWindowRect() which queries SDL live, so they stay
+	// consistent with these direct sets even though the Window's cached definition isn't updated.
 	pio.Platform_SetWindowPos = [](ImGuiViewport* vp, ImVec2 p) {
-		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
-		if (data && data->window) {
-			data->window->update(data->window->getDefinition().withPosition(Vector2i(static_cast<int>(p.x), static_cast<int>(p.y))));
+		if (void* raw = vp->PlatformHandleRaw) {
+			SDL_SetWindowPosition(raw, static_cast<int>(p.x), static_cast<int>(p.y));
 		}
 	};
 	pio.Platform_GetWindowPos = [](ImGuiViewport* vp) -> ImVec2 {
@@ -703,10 +718,8 @@ void HalleyImGui::setupPlatformCallbacks()
 	};
 
 	pio.Platform_SetWindowSize = [](ImGuiViewport* vp, ImVec2 s) {
-		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
-		if (data && data->window) {
-			const Vector2i size(static_cast<int>(std::max(1.0f, s.x)), static_cast<int>(std::max(1.0f, s.y)));
-			data->window->update(data->window->getDefinition().withSize(size));
+		if (void* raw = vp->PlatformHandleRaw) {
+			SDL_SetWindowSize(raw, static_cast<int>(std::max(1.0f, s.x)), static_cast<int>(std::max(1.0f, s.y)));
 		}
 	};
 	pio.Platform_GetWindowSize = [](ImGuiViewport* vp) -> ImVec2 {
@@ -787,6 +800,15 @@ void HalleyImGui::renderViewports(RenderContext& rc)
 	void* mainRaw = mainWindow ? mainWindow->getImplementationPointer("SDL_Window") : nullptr;
 	const Colour4f clearCol = darkTheme ? Colour4f(0.11f, 0.115f, 0.10f, 1.0f) : Colour4f(0.93f, 0.92f, 0.89f, 1.0f);
 
+	// Detached windows share the one GL context, so its swap interval applies to every secondary
+	// swap too: at vsync=1 each window->swap() blocks a whole vblank and the frame rate divides by the
+	// number of torn-off windows. Present the secondaries with no wait; the deferred MAIN swap (after
+	// onRender) still paces the frame at the original interval.
+	const int savedSwap = SDL_GL_GetSwapInterval();
+	if (savedSwap != 0) {
+		SDL_GL_SetSwapInterval(0);
+	}
+
 	for (int i = 1; i < pio.Viewports.Size; ++i) {       // [0] is the app-owned main viewport
 		ImGuiViewport* vp = pio.Viewports[i];
 		if (!vp || (vp->Flags & ImGuiViewportFlags_IsMinimized)) {
@@ -797,11 +819,9 @@ void HalleyImGui::renderViewports(RenderContext& rc)
 			continue;
 		}
 		void* raw = data->window->getImplementationPointer("SDL_Window");
-		if (!raw) {
-			continue;
+		if (!raw || SDL_GL_MakeCurrent(raw, glContext) != 0) {
+			continue; // couldn't bind this window's drawable — skip it rather than draw to the wrong one
 		}
-
-		SDL_GL_MakeCurrent(raw, glContext);
 		const Vector2i ds = data->window->getDrawableSize();
 		if (ds.x <= 0 || ds.y <= 0) {
 			continue;
@@ -824,10 +844,14 @@ void HalleyImGui::renderViewports(RenderContext& rc)
 		data->window->swap();
 	}
 
-	// Restore the main window as the current GL drawable: the engine swaps it in a deferred step after
-	// onRender returns, so it must be current again or the wrong surface gets presented.
+	// Restore the main window as the current GL drawable + its swap interval: the engine swaps it in a
+	// deferred step after onRender returns, so it must be current (and vsync-paced) again or the wrong
+	// or un-paced surface gets presented.
 	if (mainRaw) {
 		SDL_GL_MakeCurrent(mainRaw, glContext);
+	}
+	if (savedSwap != 0) {
+		SDL_GL_SetSwapInterval(savedSwap);
 	}
 }
 
