@@ -306,6 +306,13 @@ void HalleyImGui::applyColors(bool dark)
 	c[ImGuiCol_PlotLinesHovered] = accentBright;
 	c[ImGuiCol_PlotHistogramHovered] = accentBright;
 
+	// Section / collapsing-header highlights read calmer as a dark blue than the warm accent in dark
+	// mode (light mode keeps its lime header). Overrides the accent-based Header set just above.
+	const ImVec4 headerCol = dark ? ImVec4(0.20f, 0.40f, 0.66f, 1.0f) : accent;
+	c[ImGuiCol_Header] = ImVec4(headerCol.x, headerCol.y, headerCol.z, 0.55f);
+	c[ImGuiCol_HeaderHovered] = ImVec4(headerCol.x, headerCol.y, headerCol.z, 0.80f);
+	c[ImGuiCol_HeaderActive] = ImVec4(headerCol.x, headerCol.y, headerCol.z, 1.00f);
+
 	if (viewportsEnabled) {
 		// Torn-off windows are real OS windows: keep their background opaque so the desktop doesn't
 		// show through. Rounding stays on (renderViewports clears each secondary window to the window
