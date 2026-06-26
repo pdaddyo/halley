@@ -8,8 +8,13 @@
 #include <imgui/imgui.h>
 
 #include <halley/api/video_api.h>
+#include <halley/api/system_api.h>
 #include <halley/api/input_api.h>
 #include <halley/graphics/painter.h>
+#include <halley/graphics/window.h>
+#include <halley/graphics/camera.h>
+#include <halley/graphics/render_context.h>
+#include <halley/graphics/render_target/render_target_screen.h>
 #include <halley/graphics/material/material.h>
 #include <halley/graphics/material/material_definition.h>
 #include <halley/graphics/texture.h>
@@ -19,11 +24,43 @@
 #include <halley/input/input_device.h>
 #include <halley/input/input_keys.h>
 #include <halley/maths/rect.h>
+#include <halley/maths/colour.h>
 #include <halley/text/halleystring.h>
 
 using namespace Halley;
 
+// A handful of SDL2 calls have no Halley::Window equivalent (raise/title/focus query, the global
+// mouse, display enumeration). engine-core has no SDL headers in its include path, but the final
+// non-embed executable links SDL2, so we declare the few C symbols we need. SDL_Window* /
+// SDL_GLContext are opaque pointers, so void* matches at the ABI level under C linkage.
+extern "C" {
+	int SDL_GL_MakeCurrent(void* window, void* context);
+	void SDL_SetWindowTitle(void* window, const char* title);
+	void SDL_RaiseWindow(void* window);
+	unsigned int SDL_GetWindowFlags(void* window);
+	unsigned int SDL_GetGlobalMouseState(int* x, int* y);
+	int SDL_GetNumVideoDisplays(void);
+	int SDL_GetDisplayBounds(int displayIndex, void* rect);      // rect = SDL_Rect{int x,y,w,h}
+	int SDL_GetDisplayUsableBounds(int displayIndex, void* rect);
+}
+
 namespace {
+	// Mirror of the SDL constants we test (SDL_video.h / SDL_mouse.h). Stable ABI values.
+	constexpr unsigned int kSDL_WINDOW_INPUT_FOCUS = 0x00000200u;
+	constexpr unsigned int kSDL_WINDOW_MINIMIZED   = 0x00000040u;
+	constexpr unsigned int kSDL_BUTTON_LMASK = 1u;       // SDL_BUTTON(1)
+	constexpr unsigned int kSDL_BUTTON_MMASK = 2u;       // SDL_BUTTON(2)
+	constexpr unsigned int kSDL_BUTTON_RMASK = 4u;       // SDL_BUTTON(3)
+
+	struct SDLRectABI { int x, y, w, h; };               // matches SDL_Rect layout exactly
+
+	// Stashed in ImGuiViewport::PlatformUserData. Owns the secondary OS window (the app-owned main
+	// viewport has window == nullptr and ownedByApp == true, and is never created/destroyed here).
+	struct ImGuiViewportData {
+		std::shared_ptr<Window> window;
+		bool ownedByApp = false;
+	};
+
 	// Halley KeyCode == USB HID / SDL scancode. Map the keys ImGui cares about for
 	// navigation and editing onto ImGuiKey. Letters/digits are handled by range below.
 	ImGuiKey toImGuiKey(KeyCode kc)
@@ -127,6 +164,16 @@ HalleyImGui::HalleyImGui(Resources& resources, VideoAPI& video, const String& ma
 HalleyImGui::~HalleyImGui()
 {
 	if (context) {
+		ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+		if (viewportsEnabled) {
+			// Close any secondary OS windows (calls Platform_DestroyWindow, which destroys the SDL
+			// windows) and free the app-owned main viewport's data, which ImGui never destroys itself.
+			ImGui::DestroyPlatformWindows();
+			if (ImGuiViewport* mv = ImGui::GetMainViewport()) {
+				delete static_cast<ImGuiViewportData*>(mv->PlatformUserData);
+				mv->PlatformUserData = nullptr;
+			}
+		}
 		ImGui::DestroyContext(static_cast<ImGuiContext*>(context));
 		context = nullptr;
 	}
@@ -243,6 +290,12 @@ void HalleyImGui::applyColors(bool dark)
 	c[ImGuiCol_NavHighlight] = accent;
 	c[ImGuiCol_PlotLinesHovered] = accentBright;
 	c[ImGuiCol_PlotHistogramHovered] = accentBright;
+
+	if (viewportsEnabled) {
+		// Torn-off windows are real OS windows: keep them opaque + square (see enableViewports()).
+		c[ImGuiCol_WindowBg].w = 1.0f;
+		ImGui::GetStyle().WindowRounding = 0.0f;
+	}
 }
 
 void HalleyImGui::setColorScheme(bool dark)
@@ -321,13 +374,36 @@ void HalleyImGui::newFrame(InputAPI& input, Vector2f displaySize, Time deltaTime
 	io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 	io.DeltaTime = std::max(1.0f / 1000.0f, static_cast<float>(deltaTime));
 
-	// Mouse (positions are in the same render-target pixel space as displaySize).
-	if (auto mouse = input.getMouse(0)) {
+	// Mouse position + buttons. With multi-viewports on, ImGui needs GLOBAL desktop coordinates so it
+	// can hit-test the cursor across separate OS windows (and so clicks on a detached window register,
+	// which the main-window InputAPI never sees) — read SDL's global mouse state there. Otherwise use
+	// the engine mouse (main-window-relative, the same space as displaySize).
+	auto mouse = input.getMouse(0);
+	if (viewportsEnabled) {
+		int gx = 0, gy = 0;
+		const unsigned int mask = SDL_GetGlobalMouseState(&gx, &gy);
+		io.AddMousePosEvent(static_cast<float>(gx), static_cast<float>(gy));
+		io.AddMouseButtonEvent(0, (mask & kSDL_BUTTON_LMASK) != 0);
+		io.AddMouseButtonEvent(1, (mask & kSDL_BUTTON_RMASK) != 0);
+		io.AddMouseButtonEvent(2, (mask & kSDL_BUTTON_MMASK) != 0);
+		// Keep the app-owned main viewport's rect aligned with the OS window (in the same global space
+		// as the cursor) so ImGui maps the cursor to the right viewport and places torn-off windows right.
+		if (mainWindow) {
+			const Rect4i r = mainWindow->getWindowRect();
+			if (ImGuiViewport* mv = ImGui::GetMainViewport()) {
+				mv->Pos = ImVec2(static_cast<float>(r.getLeft()), static_cast<float>(r.getTop()));
+				mv->Size = ImVec2(static_cast<float>(r.getWidth()), static_cast<float>(r.getHeight()));
+			}
+		}
+	} else if (mouse) {
 		const Vector2f pos = mouse->getPosition();
 		io.AddMousePosEvent(pos.x, pos.y);
 		io.AddMouseButtonEvent(0, mouse->isButtonDown(static_cast<int>(MouseButton::Left)));
 		io.AddMouseButtonEvent(1, mouse->isButtonDown(static_cast<int>(MouseButton::Right)));
 		io.AddMouseButtonEvent(2, mouse->isButtonDown(static_cast<int>(MouseButton::Middle)));
+	}
+
+	if (mouse) {
 		const Vector2f wheel = mouse->getWheelMove();
 		if (wheel.x != 0.0f || wheel.y != 0.0f) {
 			io.AddMouseWheelEvent(wheel.x, wheel.y);
@@ -427,7 +503,12 @@ void HalleyImGui::renderDrawData(Painter& painter)
 
 void HalleyImGui::drawCurrentDrawData(Painter& painter)
 {
-	ImDrawData* dd = ImGui::GetDrawData();
+	drawDrawData(painter, ImGui::GetDrawData());
+}
+
+void HalleyImGui::drawDrawData(Painter& painter, void* imDrawData)
+{
+	ImDrawData* dd = static_cast<ImDrawData*>(imDrawData);
 	if (!dd || dd->CmdListsCount == 0 || materials.empty() || !fontTexture) {
 		return;
 	}
@@ -479,7 +560,10 @@ void HalleyImGui::drawCurrentDrawData(Painter& painter)
 					const ImDrawVert& v = drawList->VtxBuffer[static_cast<int>(orig)];
 					const unsigned int col = v.col;
 					cmdVerts.push_back(HalleyImGuiVertex{
-						Vector2f(v.pos.x, v.pos.y),
+						// Window-local position (display origin subtracted): the per-window camera then
+						// maps [0, size] onto that window's drawable. For the main viewport DisplayPos is
+						// (0,0), so this is identical to the original single-window behaviour.
+						Vector2f(v.pos.x - dispPos.x, v.pos.y - dispPos.y),
 						Vector2f(v.uv.x, v.uv.y),
 						Vector4f(
 							static_cast<float>(col & 0xFF) / 255.0f,
@@ -512,6 +596,239 @@ void HalleyImGui::drawCurrentDrawData(Painter& painter)
 	}
 
 	painter.setClip(std::nullopt);
+}
+
+// ---- Multi-viewport implementation ------------------------------------------------------------
+
+void HalleyImGui::enableViewports(SystemAPI& sys, VideoAPI& vid)
+{
+	if (!context || viewportsEnabled) {
+		return;
+	}
+	ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+	ImGuiIO& io = ImGui::GetIO();
+
+	// Multi-viewport rendering makes the engine's shared GL context current on each secondary window.
+	// If the video backend doesn't expose one (e.g. a future Metal path), leave viewports off — the
+	// docked overlay still works fine inside the main window.
+	void* ctx = vid.getImplementationPointer("SDL_GLContext");
+	if (!ctx) {
+		return;
+	}
+
+	system = &sys;
+	video = &vid;
+	mainWindow = &vid.getWindow();
+	glContext = ctx;
+
+	io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports | ImGuiBackendFlags_RendererHasViewports;
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable | ImGuiConfigFlags_DockingEnable;
+	io.BackendPlatformUserData = this; // recovered inside the static platform callbacks
+
+	// Torn-off panels become rectangular, opaque OS windows: drop window rounding and force an opaque
+	// background so detached windows don't show rounded corners over uninitialised window pixels.
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.WindowRounding = 0.0f;
+	style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+
+	setupPlatformCallbacks();
+	updateMonitors();
+
+	// Seed the app-owned main viewport. It is never created/destroyed through the callbacks, so its
+	// PlatformUserData is owned (and freed) here, not by ImGui.
+	ImGuiViewport* mv = ImGui::GetMainViewport();
+	mv->PlatformHandle = mainWindow;
+	mv->PlatformHandleRaw = mainWindow->getImplementationPointer("SDL_Window");
+	delete static_cast<ImGuiViewportData*>(mv->PlatformUserData);
+	mv->PlatformUserData = new ImGuiViewportData{ nullptr, true };
+
+	viewportsEnabled = true;
+}
+
+void HalleyImGui::setupPlatformCallbacks()
+{
+	// These are non-capturing lambdas (so they convert to plain function pointers), but being defined
+	// inside a HalleyImGui member they may touch its private members through the recovered `self`.
+	ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
+
+	pio.Platform_CreateWindow = [](ImGuiViewport* vp) {
+		auto* self = static_cast<HalleyImGui*>(ImGui::GetIO().BackendPlatformUserData);
+		if (!self || !self->system) {
+			return;
+		}
+		const Vector2i pos(static_cast<int>(vp->Pos.x), static_cast<int>(vp->Pos.y));
+		const Vector2i size(static_cast<int>(std::max(1.0f, vp->Size.x)), static_cast<int>(std::max(1.0f, vp->Size.y)));
+		// Create hidden + borderless; ImGui sets the position then calls Platform_ShowWindow.
+		WindowDefinition def(WindowType::BorderlessWindow, std::optional<Vector2i>(pos), size, String(), false);
+		auto win = self->system->createWindow(def);
+		vp->PlatformUserData = new ImGuiViewportData{ win, false };
+		vp->PlatformHandle = win.get();
+		vp->PlatformHandleRaw = win->getImplementationPointer("SDL_Window");
+	};
+
+	pio.Platform_DestroyWindow = [](ImGuiViewport* vp) {
+		auto* self = static_cast<HalleyImGui*>(ImGui::GetIO().BackendPlatformUserData);
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (data) {
+			if (self && self->system && data->window && !data->ownedByApp) {
+				self->system->destroyWindow(data->window);
+			}
+			delete data;
+		}
+		vp->PlatformUserData = nullptr;
+		vp->PlatformHandle = nullptr;
+		vp->PlatformHandleRaw = nullptr;
+	};
+
+	pio.Platform_ShowWindow = [](ImGuiViewport* vp) {
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (data && data->window) {
+			data->window->show();
+		}
+	};
+
+	pio.Platform_SetWindowPos = [](ImGuiViewport* vp, ImVec2 p) {
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (data && data->window) {
+			data->window->update(data->window->getDefinition().withPosition(Vector2i(static_cast<int>(p.x), static_cast<int>(p.y))));
+		}
+	};
+	pio.Platform_GetWindowPos = [](ImGuiViewport* vp) -> ImVec2 {
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (data && data->window) {
+			const Rect4i r = data->window->getWindowRect();
+			return ImVec2(static_cast<float>(r.getLeft()), static_cast<float>(r.getTop()));
+		}
+		return vp->Pos;
+	};
+
+	pio.Platform_SetWindowSize = [](ImGuiViewport* vp, ImVec2 s) {
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (data && data->window) {
+			const Vector2i size(static_cast<int>(std::max(1.0f, s.x)), static_cast<int>(std::max(1.0f, s.y)));
+			data->window->update(data->window->getDefinition().withSize(size));
+		}
+	};
+	pio.Platform_GetWindowSize = [](ImGuiViewport* vp) -> ImVec2 {
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (data && data->window) {
+			const Rect4i r = data->window->getWindowRect();
+			return ImVec2(static_cast<float>(r.getWidth()), static_cast<float>(r.getHeight()));
+		}
+		return vp->Size;
+	};
+
+	pio.Platform_SetWindowFocus = [](ImGuiViewport* vp) {
+		if (void* raw = vp->PlatformHandleRaw) {
+			SDL_RaiseWindow(raw);
+		}
+	};
+	pio.Platform_GetWindowFocus = [](ImGuiViewport* vp) -> bool {
+		if (void* raw = vp->PlatformHandleRaw) {
+			return (SDL_GetWindowFlags(raw) & kSDL_WINDOW_INPUT_FOCUS) != 0;
+		}
+		return false;
+	};
+	pio.Platform_GetWindowMinimized = [](ImGuiViewport* vp) -> bool {
+		if (void* raw = vp->PlatformHandleRaw) {
+			return (SDL_GetWindowFlags(raw) & kSDL_WINDOW_MINIMIZED) != 0;
+		}
+		return false;
+	};
+	pio.Platform_SetWindowTitle = [](ImGuiViewport* vp, const char* title) {
+		if (void* raw = vp->PlatformHandleRaw) {
+			SDL_SetWindowTitle(raw, title ? title : "");
+		}
+	};
+}
+
+void HalleyImGui::updateMonitors()
+{
+	ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
+	pio.Monitors.resize(0);
+	const int n = SDL_GetNumVideoDisplays();
+	const int count = n > 0 ? n : 1;
+	for (int i = 0; i < count; ++i) {
+		SDLRectABI bounds{ 0, 0, 1920, 1080 };
+		SDLRectABI work = bounds;
+		if (n > 0) {
+			SDL_GetDisplayBounds(i, &bounds);
+			work = bounds;
+			SDL_GetDisplayUsableBounds(i, &work);
+		}
+		ImGuiPlatformMonitor mon;
+		mon.MainPos = ImVec2(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+		mon.MainSize = ImVec2(static_cast<float>(bounds.w), static_cast<float>(bounds.h));
+		mon.WorkPos = ImVec2(static_cast<float>(work.x), static_cast<float>(work.y));
+		mon.WorkSize = ImVec2(static_cast<float>(work.w), static_cast<float>(work.h));
+		mon.DpiScale = 1.0f;
+		pio.Monitors.push_back(mon);
+	}
+}
+
+void HalleyImGui::updateViewports()
+{
+	if (!context || !viewportsEnabled) {
+		return;
+	}
+	ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+	updateMonitors();
+	ImGui::UpdatePlatformWindows();
+}
+
+void HalleyImGui::renderViewports(RenderContext& rc)
+{
+	if (!context || !viewportsEnabled || !video || !glContext) {
+		return;
+	}
+	ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+
+	ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
+	void* mainRaw = mainWindow ? mainWindow->getImplementationPointer("SDL_Window") : nullptr;
+	const Colour4f clearCol = darkTheme ? Colour4f(0.11f, 0.115f, 0.10f, 1.0f) : Colour4f(0.93f, 0.92f, 0.89f, 1.0f);
+
+	for (int i = 1; i < pio.Viewports.Size; ++i) {       // [0] is the app-owned main viewport
+		ImGuiViewport* vp = pio.Viewports[i];
+		if (!vp || (vp->Flags & ImGuiViewportFlags_IsMinimized)) {
+			continue;
+		}
+		auto* data = static_cast<ImGuiViewportData*>(vp->PlatformUserData);
+		if (!data || !data->window) {
+			continue;
+		}
+		void* raw = data->window->getImplementationPointer("SDL_Window");
+		if (!raw) {
+			continue;
+		}
+
+		SDL_GL_MakeCurrent(raw, glContext);
+		const Vector2i ds = data->window->getDrawableSize();
+		if (ds.x <= 0 || ds.y <= 0) {
+			continue;
+		}
+
+		auto target = video->createScreenRenderTarget(ds);
+		if (!target) {
+			continue;
+		}
+		Camera cam;
+		cam.setPosition(Vector2f(ds.x * 0.5f, ds.y * 0.5f));
+		cam.setZoom(1.0f);
+		cam.setViewPort(Rect4i(0, 0, ds.x, ds.y));
+
+		ImDrawData* dd = vp->DrawData;
+		rc.with(cam).with(*target).bind([&](Painter& p) {
+			p.clear(clearCol);
+			drawDrawData(p, dd);
+		});
+		data->window->swap();
+	}
+
+	// Restore the main window as the current GL drawable: the engine swaps it in a deferred step after
+	// onRender returns, so it must be current again or the wrong surface gets presented.
+	if (mainRaw) {
+		SDL_GL_MakeCurrent(mainRaw, glContext);
+	}
 }
 
 bool HalleyImGui::wantCaptureMouse() const

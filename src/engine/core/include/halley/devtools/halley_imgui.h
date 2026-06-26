@@ -11,8 +11,11 @@ namespace Halley
 {
 	class Resources;
 	class VideoAPI;
+	class SystemAPI;
 	class InputAPI;
 	class Painter;
+	class Window;
+	class RenderContext;
 	class Texture;
 	class Material;
 	class MaterialDefinition;
@@ -72,6 +75,21 @@ namespace Halley
 		// if there is no draw data yet.
 		void renderDrawData(Painter& painter);
 
+		// ---- Multi-viewport support (detach ImGui windows into their own OS windows) ----
+		// Turn on Dear ImGui multi-viewports + docking: an ImGui window dragged outside the main
+		// window becomes its own borderless OS window. Requires the GL video backend (uses the
+		// shared GL context made-current per window); a no-op on backends that don't expose one.
+		// Call once after construction. `video.getWindow()` is taken as the main (app-owned) viewport.
+		void enableViewports(SystemAPI& system, VideoAPI& video);
+		bool areViewportsEnabled() const { return viewportsEnabled; }
+
+		// Per-frame, AFTER render(): create/move/resize/destroy the secondary OS windows ImGui asked
+		// for (updateViewports), then draw each one's contents and present it (renderViewports).
+		// Both must run OUTSIDE the main window's active Painter pass; renderViewports restores the
+		// main GL context before returning so the engine's deferred main-window swap is unaffected.
+		void updateViewports();
+		void renderViewports(RenderContext& rc);
+
 		// Register a texture for use as an ImGui image (ImGui::Image). Returns a stable id to
 		// pass as ImTextureID. Idempotent per texture pointer; the backend keeps the texture (and
 		// a matching material) alive. Use for drawing game sprites/atlases in the overlay.
@@ -110,9 +128,21 @@ namespace Halley
 
 		bool darkTheme = true;              // current colour scheme (dark by default)
 
+		// Multi-viewport state. mainWindow/video/system are non-owning (owned by the engine); glContext
+		// is the engine's shared GL context (made current per secondary window then restored to main).
+		bool viewportsEnabled = false;
+		SystemAPI* system = nullptr;
+		VideoAPI* video = nullptr;
+		Window* mainWindow = nullptr;
+		void* glContext = nullptr;
+
 		// Walk the current ImDrawData into the bound painter. Shared by render() (after ImGui::Render)
 		// and renderDrawData() (mirroring the same data into another target).
 		void drawCurrentDrawData(Painter& painter);
+		// Draw an explicit ImDrawData (void* keeps imgui.h out of this header) into the bound painter.
+		void drawDrawData(Painter& painter, void* imDrawData);
+		void setupPlatformCallbacks();  // wire ImGuiPlatformIO platform-window callbacks
+		void updateMonitors();          // refresh ImGui's monitor list from the OS displays
 
 		void buildFont(VideoAPI& video, const void* fontData, int fontDataSize, float fontPixelSize);
 		void applyTheme();             // spacious style metrics + the current colour palette
