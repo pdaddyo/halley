@@ -155,6 +155,7 @@ HalleyImGui::HalleyImGui(Resources& resources, VideoAPI& video, const String& ma
 	io.BackendRendererName = "halley_painter";
 	io.BackendPlatformName = "halley_input";
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigWindowsResizeFromEdges = true; // grab any window edge/corner to resize (not just the grip)
 
 	applyTheme();
 
@@ -196,13 +197,13 @@ void HalleyImGui::applyTheme()
 	// Spacious style metrics inspired by ole.kristensen's "ledSynthmaster" Dear ImGui style
 	// (generous padding/spacing, rounded frames). Set once; setColorScheme() only re-tints.
 	ImGuiStyle& s = ImGui::GetStyle();
-	s.WindowRounding = 5.0f;
-	s.ChildRounding = 5.0f;
-	s.FrameRounding = 4.0f;
-	s.PopupRounding = 4.0f;
-	s.GrabRounding = 3.0f;
-	s.TabRounding = 4.0f;
-	s.ScrollbarRounding = 9.0f;
+	s.WindowRounding = 9.0f;
+	s.ChildRounding = 8.0f;
+	s.FrameRounding = 6.0f;
+	s.PopupRounding = 8.0f;
+	s.GrabRounding = 4.0f;
+	s.TabRounding = 7.0f;
+	s.ScrollbarRounding = 10.0f;
 	s.WindowBorderSize = 1.0f;
 	s.FrameBorderSize = 0.0f;
 	s.WindowPadding = ImVec2(15.0f, 15.0f);
@@ -219,9 +220,9 @@ void HalleyImGui::applyTheme()
 
 void HalleyImGui::applyColors(bool dark)
 {
-	// Start from a stock palette so every colour slot (including any the vendored ImGui adds,
-	// e.g. docking) is filled coherently, then overlay the ledSynthmaster-style lime accent and
-	// a warm background. The accent is shared by both modes so the look stays consistent.
+	// Start from a stock palette so every colour slot (including any the vendored ImGui adds, e.g.
+	// docking) is filled coherently, then overlay our own. Dark mode is a muted palette pulled from
+	// the PB logo (deep navy/teal field + coral accent); light mode keeps the ledSynthmaster cream+lime.
 	if (dark) {
 		ImGui::StyleColorsDark();
 	} else {
@@ -229,34 +230,36 @@ void HalleyImGui::applyColors(bool dark)
 	}
 
 	ImVec4* c = ImGui::GetStyle().Colors;
-	const ImVec4 accent(0.40f, 0.82f, 0.12f, 1.0f);       // lime/leaf green (ledSynthmaster signature)
-	const ImVec4 accentBright(0.52f, 0.95f, 0.22f, 1.0f);
+	// Accent: muted coral from the PB logo for dark mode; ledSynthmaster lime for light mode.
+	const ImVec4 accent = dark ? ImVec4(0.76f, 0.46f, 0.44f, 1.0f) : ImVec4(0.40f, 0.82f, 0.12f, 1.0f);
+	const ImVec4 accentBright = dark ? ImVec4(0.86f, 0.56f, 0.53f, 1.0f) : ImVec4(0.52f, 0.95f, 0.22f, 1.0f);
 
 	if (dark) {
-		const ImVec4 greenHover(0.30f, 0.42f, 0.18f, 1.0f);
-		c[ImGuiCol_Text] = ImVec4(0.88f, 0.88f, 0.85f, 1.0f);
-		c[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.47f, 1.0f);
-		c[ImGuiCol_WindowBg] = ImVec4(0.11f, 0.115f, 0.10f, 0.97f);
-		c[ImGuiCol_ChildBg] = ImVec4(1.0f, 1.0f, 1.0f, 0.035f);
-		c[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.105f, 0.09f, 0.98f);
-		c[ImGuiCol_Border] = ImVec4(0.0f, 0.0f, 0.0f, 0.55f);
-		c[ImGuiCol_FrameBg] = ImVec4(0.17f, 0.18f, 0.15f, 1.0f);
-		c[ImGuiCol_FrameBgHovered] = greenHover;
-		c[ImGuiCol_FrameBgActive] = ImVec4(0.34f, 0.46f, 0.20f, 1.0f);
-		c[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.085f, 0.07f, 1.0f);
-		c[ImGuiCol_TitleBgActive] = ImVec4(0.20f, 0.32f, 0.10f, 1.0f);
-		c[ImGuiCol_MenuBarBg] = ImVec4(0.13f, 0.135f, 0.12f, 1.0f);
-		c[ImGuiCol_Button] = ImVec4(0.20f, 0.22f, 0.16f, 1.0f);
-		c[ImGuiCol_ButtonHovered] = greenHover;
-		c[ImGuiCol_Tab] = ImVec4(0.13f, 0.15f, 0.11f, 1.0f);
-		c[ImGuiCol_TabHovered] = ImVec4(0.30f, 0.46f, 0.16f, 0.90f);
-		c[ImGuiCol_TabActive] = ImVec4(0.22f, 0.34f, 0.12f, 1.0f);
-		c[ImGuiCol_TabUnfocused] = ImVec4(0.11f, 0.12f, 0.10f, 1.0f);
-		c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16f, 0.22f, 0.12f, 1.0f);
-		c[ImGuiCol_Separator] = ImVec4(0.0f, 0.0f, 0.0f, 0.50f);
-		c[ImGuiCol_TableHeaderBg] = ImVec4(0.16f, 0.18f, 0.13f, 1.0f);
-		c[ImGuiCol_TableBorderStrong] = ImVec4(0.0f, 0.0f, 0.0f, 0.60f);
-		c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+		// Muted PB-logo palette: deep navy/teal field, teal interactive tints, coral accent (set below).
+		const ImVec4 tealHover(0.18f, 0.27f, 0.34f, 1.0f);
+		c[ImGuiCol_Text] = ImVec4(0.85f, 0.87f, 0.90f, 1.0f);
+		c[ImGuiCol_TextDisabled] = ImVec4(0.49f, 0.53f, 0.58f, 1.0f);
+		c[ImGuiCol_WindowBg] = ImVec4(0.075f, 0.10f, 0.145f, 0.97f);
+		c[ImGuiCol_ChildBg] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+		c[ImGuiCol_PopupBg] = ImVec4(0.07f, 0.095f, 0.135f, 0.98f);
+		c[ImGuiCol_Border] = ImVec4(0.30f, 0.40f, 0.50f, 0.22f);
+		c[ImGuiCol_FrameBg] = ImVec4(0.135f, 0.165f, 0.215f, 1.0f);
+		c[ImGuiCol_FrameBgHovered] = tealHover;
+		c[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.31f, 0.39f, 1.0f);
+		c[ImGuiCol_TitleBg] = ImVec4(0.075f, 0.095f, 0.13f, 1.0f);
+		c[ImGuiCol_TitleBgActive] = ImVec4(0.135f, 0.225f, 0.30f, 1.0f);
+		c[ImGuiCol_MenuBarBg] = ImVec4(0.10f, 0.13f, 0.17f, 1.0f);
+		c[ImGuiCol_Button] = ImVec4(0.155f, 0.195f, 0.255f, 1.0f);
+		c[ImGuiCol_ButtonHovered] = tealHover;
+		c[ImGuiCol_Tab] = ImVec4(0.105f, 0.135f, 0.18f, 1.0f);
+		c[ImGuiCol_TabHovered] = ImVec4(0.20f, 0.31f, 0.40f, 0.90f);
+		c[ImGuiCol_TabActive] = ImVec4(0.17f, 0.26f, 0.34f, 1.0f);
+		c[ImGuiCol_TabUnfocused] = ImVec4(0.09f, 0.11f, 0.15f, 1.0f);
+		c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.135f, 0.19f, 0.25f, 1.0f);
+		c[ImGuiCol_Separator] = ImVec4(0.30f, 0.40f, 0.50f, 0.25f);
+		c[ImGuiCol_TableHeaderBg] = ImVec4(0.125f, 0.16f, 0.21f, 1.0f);
+		c[ImGuiCol_TableBorderStrong] = ImVec4(0.0f, 0.0f, 0.0f, 0.55f);
+		c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.025f);
 	} else {
 		const ImVec4 cream(1.0f, 0.99f, 0.96f, 1.0f);
 		const ImVec4 greenHover(0.80f, 0.90f, 0.62f, 1.0f);
@@ -304,9 +307,10 @@ void HalleyImGui::applyColors(bool dark)
 	c[ImGuiCol_PlotHistogramHovered] = accentBright;
 
 	if (viewportsEnabled) {
-		// Torn-off windows are real OS windows: keep them opaque + square (see enableViewports()).
+		// Torn-off windows are real OS windows: keep their background opaque so the desktop doesn't
+		// show through. Rounding stays on (renderViewports clears each secondary window to the window
+		// background colour, so the rounded corners blend seamlessly with the rectangular OS window).
 		c[ImGuiCol_WindowBg].w = 1.0f;
-		ImGui::GetStyle().WindowRounding = 0.0f;
 	}
 }
 
@@ -637,11 +641,10 @@ void HalleyImGui::enableViewports(SystemAPI& sys, VideoAPI& vid)
 	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable | ImGuiConfigFlags_DockingEnable;
 	io.BackendPlatformUserData = this; // recovered inside the static platform callbacks
 
-	// Torn-off panels become rectangular, opaque OS windows: drop window rounding and force an opaque
-	// background so detached windows don't show rounded corners over uninitialised window pixels.
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 0.0f;
-	style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+	// Torn-off panels become real OS windows: force an opaque window background so detached windows
+	// don't show the desktop through translucency. (Rounding is kept — renderViewports clears each
+	// secondary window to the background colour, so the rounded corners stay seamless.)
+	ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.0f;
 
 	setupPlatformCallbacks();
 	updateMonitors();
@@ -798,7 +801,7 @@ void HalleyImGui::renderViewports(RenderContext& rc)
 
 	ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
 	void* mainRaw = mainWindow ? mainWindow->getImplementationPointer("SDL_Window") : nullptr;
-	const Colour4f clearCol = darkTheme ? Colour4f(0.11f, 0.115f, 0.10f, 1.0f) : Colour4f(0.93f, 0.92f, 0.89f, 1.0f);
+	const Colour4f clearCol = darkTheme ? Colour4f(0.075f, 0.10f, 0.145f, 1.0f) : Colour4f(0.93f, 0.92f, 0.89f, 1.0f);
 
 	// Detached windows share the one GL context, so its swap interval applies to every secondary
 	// swap too: at vsync=1 each window->swap() blocks a whole vblank and the frame rate divides by the
