@@ -154,6 +154,9 @@ namespace Halley
 		virtual void* getNativeHandle() const { return nullptr; }
 		virtual String getNativeHandleType() const { return ""; }
 
+		// Escape hatch to fetch a backend-native handle (e.g. "SDL_Window"). Returns nullptr if unknown.
+		virtual void* getImplementationPointer(const String& id) const { return nullptr; }
+
 		virtual void setTitleColour(Colour4f bgCol, Colour4f textCol) {}
 	};
 }

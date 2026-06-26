@@ -83,3 +83,16 @@ void* SDLGLContext::getGLProcAddress(const char* name)
 {
 	return SDL_GL_GetProcAddress(name);
 }
+
+void* SDLGLContext::getImplementationPointer(const String& id)
+{
+	// The native rendering context, so the game can SDL_GL_MakeCurrent it onto a second window.
+	if (id == "SDL_GLContext") {
+#ifdef __EMSCRIPTEN__
+		return reinterpret_cast<void*>(static_cast<intptr_t>(context));
+#else
+		return context; // SDL_GLContext is a void*
+#endif
+	}
+	return nullptr;
+}

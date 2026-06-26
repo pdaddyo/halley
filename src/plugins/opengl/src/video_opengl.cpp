@@ -292,9 +292,26 @@ std::unique_ptr<ScreenRenderTarget> VideoOpenGL::createScreenRenderTarget()
 	return std::make_unique<ScreenRenderTargetOpenGL>(Rect4i({}, getWindow().getDrawableSize()));
 }
 
+std::unique_ptr<ScreenRenderTarget> VideoOpenGL::createScreenRenderTarget(Vector2i drawableSize)
+{
+	// Screen target for an arbitrary drawable (e.g. a second OS window the game made-current itself).
+	// ScreenRenderTargetOpenGL just binds FBO 0 of whatever GL context/drawable is current when bound.
+	return std::make_unique<ScreenRenderTargetOpenGL>(Rect4i(Vector2i(), drawableSize));
+}
+
 std::unique_ptr<TextureRenderTarget> VideoOpenGL::createTextureRenderTarget()
 {
 	return std::make_unique<TextureRenderTargetOpenGL>();
+}
+
+void* VideoOpenGL::getImplementationPointer(const String& id)
+{
+	// Hand the game the engine's own GL context so it can make it current on a second window itself
+	// (one shared context made-current across both windows). Used by the debug-overlay popout.
+	if (id == "SDL_GLContext") {
+		return context ? context->getImplementationPointer(id) : nullptr;
+	}
+	return nullptr;
 }
 
 bool VideoOpenGL::isLoaderThread() const

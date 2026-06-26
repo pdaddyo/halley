@@ -40,6 +40,10 @@ namespace Halley
 		virtual std::unique_ptr<Shader> createShader(const ShaderDefinition& definition) = 0;
 		virtual std::unique_ptr<TextureRenderTarget> createTextureRenderTarget() = 0;
 		virtual std::unique_ptr<ScreenRenderTarget> createScreenRenderTarget() = 0;
+		// Screen target for an explicit drawable size (e.g. a second OS window). Pure virtual (not an
+		// inline default) so this header never instantiates unique_ptr<ScreenRenderTarget> against the
+		// incomplete forward-declared type — same reason the parameterless overload above is = 0.
+		virtual std::unique_ptr<ScreenRenderTarget> createScreenRenderTarget(Vector2i drawableSize) = 0;
 		virtual std::unique_ptr<MaterialConstantBuffer> createConstantBuffer() = 0;
 		virtual std::unique_ptr<MaterialStructuredBuffer> createStructuredBuffer() = 0;
 

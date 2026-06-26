@@ -66,6 +66,12 @@ namespace Halley
 		// Safe to call even if newFrame() was not called this frame (it is a no-op then).
 		void render(Painter& painter);
 
+		// Draw this frame's already-finished ImGui draw data again into another Painter pass (e.g. a
+		// second OS window), WITHOUT re-running ImGui::Render(). Call after render() has produced the
+		// draw data this frame; it is scaled to the target painter's viewport (a live mirror). No-op
+		// if there is no draw data yet.
+		void renderDrawData(Painter& painter);
+
 		// Register a texture for use as an ImGui image (ImGui::Image). Returns a stable id to
 		// pass as ImTextureID. Idempotent per texture pointer; the backend keeps the texture (and
 		// a matching material) alive. Use for drawing game sprites/atlases in the overlay.
@@ -95,6 +101,10 @@ namespace Halley
 		std::vector<int> vtxRemap;          // original vertex index -> compact index
 		std::vector<unsigned long long> vtxRemapGen; // generation stamp per original vertex
 		unsigned long long remapGen = 0;    // monotonic; never resets, so stamps never collide
+
+		// Walk the current ImDrawData into the bound painter. Shared by render() (after ImGui::Render)
+		// and renderDrawData() (mirroring the same data into another target).
+		void drawCurrentDrawData(Painter& painter);
 
 		void buildFont(VideoAPI& video, const void* fontData, int fontDataSize, float fontPixelSize);
 		void applyTheme();

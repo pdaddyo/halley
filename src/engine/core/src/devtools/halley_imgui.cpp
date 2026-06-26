@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include <imgui/imgui.h>
 
@@ -109,6 +110,7 @@ HalleyImGui::HalleyImGui(Resources& resources, VideoAPI& video, const String& ma
 	io.IniFilename = nullptr; // don't write imgui.ini into the working directory
 	io.LogFilename = nullptr;
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+	io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors; // enables window edge/corner resize cursor feedback
 	io.BackendRendererName = "halley_painter";
 	io.BackendPlatformName = "halley_input";
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -260,6 +262,23 @@ void HalleyImGui::newFrame(InputAPI& input, Vector2f displaySize, Time deltaTime
 		if (wheel.x != 0.0f || wheel.y != 0.0f) {
 			io.AddMouseWheelEvent(wheel.x, wheel.y);
 		}
+		// Map ImGui's desired cursor (set last frame from hover — e.g. a window edge/corner) onto the
+		// OS cursor so all four window edges read as resizable, not just the bottom-right grip.
+		if (io.BackendFlags & ImGuiBackendFlags_HasMouseCursors) {
+			std::optional<MouseCursorMode> mode = MouseCursorMode::Arrow;
+			switch (ImGui::GetMouseCursor()) {
+			case ImGuiMouseCursor_TextInput:  mode = MouseCursorMode::IBeam; break;
+			case ImGuiMouseCursor_ResizeAll:  mode = MouseCursorMode::SizeAll; break;
+			case ImGuiMouseCursor_ResizeNS:   mode = MouseCursorMode::SizeNS; break;
+			case ImGuiMouseCursor_ResizeEW:   mode = MouseCursorMode::SizeWE; break;
+			case ImGuiMouseCursor_ResizeNESW: mode = MouseCursorMode::SizeNESW; break;
+			case ImGuiMouseCursor_ResizeNWSE: mode = MouseCursorMode::SizeNWSE; break;
+			case ImGuiMouseCursor_Hand:       mode = MouseCursorMode::Hand; break;
+			case ImGuiMouseCursor_NotAllowed: mode = MouseCursorMode::No; break;
+			default:                          mode = MouseCursorMode::Arrow; break;
+			}
+			input.setMouseCursorMode(mode);
+		}
 	}
 
 	// Keyboard.
@@ -321,6 +340,23 @@ void HalleyImGui::render(Painter& painter)
 	ImGui::Render();
 	frameStarted = false;
 
+	drawCurrentDrawData(painter);
+}
+
+void HalleyImGui::renderDrawData(Painter& painter)
+{
+	if (!context) {
+		return;
+	}
+	ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+	// Re-draw the draw data finished by the most recent render() this frame, without re-running
+	// ImGui::Render() (that data stays valid until the next newFrame). Used to mirror the overlay
+	// into a second OS window. It scales to the bound painter's viewport.
+	drawCurrentDrawData(painter);
+}
+
+void HalleyImGui::drawCurrentDrawData(Painter& painter)
+{
 	ImDrawData* dd = ImGui::GetDrawData();
 	if (!dd || dd->CmdListsCount == 0 || materials.empty() || !fontTexture) {
 		return;

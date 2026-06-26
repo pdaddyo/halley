@@ -55,6 +55,11 @@ std::unique_ptr<ScreenRenderTarget> DummyVideoAPI::createScreenRenderTarget()
 	return std::make_unique<ScreenRenderTarget>(Rect4i({}, getWindow().getWindowRect().getSize()));
 }
 
+std::unique_ptr<ScreenRenderTarget> DummyVideoAPI::createScreenRenderTarget(Vector2i drawableSize)
+{
+	return std::make_unique<ScreenRenderTarget>(Rect4i({}, drawableSize));
+}
+
 std::unique_ptr<MaterialConstantBuffer> DummyVideoAPI::createConstantBuffer()
 {
 	return std::make_unique<DummyMaterialConstantBuffer>();

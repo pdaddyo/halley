@@ -24,6 +24,8 @@ namespace Halley
 		virtual void bind() = 0;
 		virtual std::unique_ptr<GLContext> createSharedContext() = 0;
 		virtual void* getGLProcAddress(const char* name) = 0;
+		// Escape hatch to fetch a backend-native handle (e.g. "SDL_GLContext"). Returns nullptr if unknown.
+		virtual void* getImplementationPointer(const String& id) { return nullptr; }
 	};
 
 	class ISystemMainLoopHandler {

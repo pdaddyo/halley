@@ -28,11 +28,14 @@ namespace Halley {
 		std::unique_ptr<Shader> createShader(const ShaderDefinition& definition) override;
 		std::unique_ptr<TextureRenderTarget> createTextureRenderTarget() override;
 		std::unique_ptr<ScreenRenderTarget> createScreenRenderTarget() override;
+		std::unique_ptr<ScreenRenderTarget> createScreenRenderTarget(Vector2i drawableSize) override;
 		std::unique_ptr<MaterialConstantBuffer> createConstantBuffer() override;
 		std::unique_ptr<MaterialStructuredBuffer> createStructuredBuffer() override;
 
 		String getShaderLanguage() override;
 		bool isColumnMajor() const override;
+
+		void* getImplementationPointer(const String& id) override;
 
 		bool isLoaderThread() const;
 

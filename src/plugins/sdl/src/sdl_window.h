@@ -29,6 +29,7 @@ namespace Halley
 
 		void* getNativeHandle() const override;
 		String getNativeHandleType() const override;
+		void* getImplementationPointer(const String& id) const override;
 
 		void setTitleColour(Colour4f bgCol, Colour4f textCol) override;
 

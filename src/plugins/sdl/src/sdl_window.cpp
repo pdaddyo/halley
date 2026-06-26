@@ -150,6 +150,15 @@ void* SDLWindow::getNativeHandle() const
 	return nullptr;
 }
 
+void* SDLWindow::getImplementationPointer(const String& id) const
+{
+	// The native SDL_Window*, so the game can SDL_GL_MakeCurrent / present a second OS window itself.
+	if (id == "SDL_Window") {
+		return window;
+	}
+	return nullptr;
+}
+
 String SDLWindow::getNativeHandleType() const
 {
 #ifdef _WIN32
