@@ -134,55 +134,125 @@ HalleyImGui::~HalleyImGui()
 
 void HalleyImGui::applyTheme()
 {
-	ImGui::StyleColorsDark();
+	// Spacious style metrics inspired by ole.kristensen's "ledSynthmaster" Dear ImGui style
+	// (generous padding/spacing, rounded frames). Set once; setColorScheme() only re-tints.
 	ImGuiStyle& s = ImGui::GetStyle();
 	s.WindowRounding = 5.0f;
 	s.ChildRounding = 5.0f;
 	s.FrameRounding = 4.0f;
 	s.PopupRounding = 4.0f;
-	s.GrabRounding = 4.0f;
+	s.GrabRounding = 3.0f;
 	s.TabRounding = 4.0f;
-	s.ScrollbarRounding = 4.0f;
+	s.ScrollbarRounding = 9.0f;
 	s.WindowBorderSize = 1.0f;
 	s.FrameBorderSize = 0.0f;
-	s.WindowPadding = ImVec2(10.0f, 8.0f);
-	s.FramePadding = ImVec2(8.0f, 4.0f);
-	s.ItemSpacing = ImVec2(8.0f, 6.0f);
-	s.GrabMinSize = 9.0f;
-	s.ScrollbarSize = 12.0f;
+	s.WindowPadding = ImVec2(15.0f, 15.0f);
+	s.FramePadding = ImVec2(8.0f, 5.0f);
+	s.ItemSpacing = ImVec2(12.0f, 8.0f);
+	s.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
+	s.IndentSpacing = 22.0f;
+	s.GrabMinSize = 10.0f;
+	s.ScrollbarSize = 15.0f;
 	s.WindowTitleAlign = ImVec2(0.0f, 0.5f);
 
-	ImVec4* c = s.Colors;
-	const ImVec4 accent(0.26f, 0.59f, 0.98f, 1.0f);
-	const ImVec4 accentDim(0.26f, 0.59f, 0.98f, 0.55f);
-	c[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.105f, 0.12f, 0.96f);
-	c[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.16f);
-	c[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.105f, 0.12f, 0.98f);
-	c[ImGuiCol_Border] = ImVec4(0.0f, 0.0f, 0.0f, 0.55f);
-	c[ImGuiCol_FrameBg] = ImVec4(0.16f, 0.17f, 0.19f, 1.0f);
-	c[ImGuiCol_FrameBgHovered] = ImVec4(0.22f, 0.24f, 0.27f, 1.0f);
-	c[ImGuiCol_FrameBgActive] = ImVec4(0.26f, 0.28f, 0.32f, 1.0f);
-	c[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.085f, 0.10f, 1.0f);
-	c[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.135f, 0.17f, 1.0f);
-	c[ImGuiCol_MenuBarBg] = ImVec4(0.12f, 0.125f, 0.14f, 1.0f);
-	c[ImGuiCol_Header] = ImVec4(0.20f, 0.30f, 0.45f, 0.65f);
-	c[ImGuiCol_HeaderHovered] = ImVec4(0.24f, 0.40f, 0.62f, 0.80f);
-	c[ImGuiCol_HeaderActive] = accentDim;
-	c[ImGuiCol_Button] = ImVec4(0.20f, 0.22f, 0.26f, 1.0f);
-	c[ImGuiCol_ButtonHovered] = ImVec4(0.26f, 0.40f, 0.60f, 1.0f);
+	applyColors(darkTheme);
+}
+
+void HalleyImGui::applyColors(bool dark)
+{
+	// Start from a stock palette so every colour slot (including any the vendored ImGui adds,
+	// e.g. docking) is filled coherently, then overlay the ledSynthmaster-style lime accent and
+	// a warm background. The accent is shared by both modes so the look stays consistent.
+	if (dark) {
+		ImGui::StyleColorsDark();
+	} else {
+		ImGui::StyleColorsLight();
+	}
+
+	ImVec4* c = ImGui::GetStyle().Colors;
+	const ImVec4 accent(0.40f, 0.82f, 0.12f, 1.0f);       // lime/leaf green (ledSynthmaster signature)
+	const ImVec4 accentBright(0.52f, 0.95f, 0.22f, 1.0f);
+
+	if (dark) {
+		const ImVec4 greenHover(0.30f, 0.42f, 0.18f, 1.0f);
+		c[ImGuiCol_Text] = ImVec4(0.88f, 0.88f, 0.85f, 1.0f);
+		c[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.47f, 1.0f);
+		c[ImGuiCol_WindowBg] = ImVec4(0.11f, 0.115f, 0.10f, 0.97f);
+		c[ImGuiCol_ChildBg] = ImVec4(1.0f, 1.0f, 1.0f, 0.035f);
+		c[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.105f, 0.09f, 0.98f);
+		c[ImGuiCol_Border] = ImVec4(0.0f, 0.0f, 0.0f, 0.55f);
+		c[ImGuiCol_FrameBg] = ImVec4(0.17f, 0.18f, 0.15f, 1.0f);
+		c[ImGuiCol_FrameBgHovered] = greenHover;
+		c[ImGuiCol_FrameBgActive] = ImVec4(0.34f, 0.46f, 0.20f, 1.0f);
+		c[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.085f, 0.07f, 1.0f);
+		c[ImGuiCol_TitleBgActive] = ImVec4(0.20f, 0.32f, 0.10f, 1.0f);
+		c[ImGuiCol_MenuBarBg] = ImVec4(0.13f, 0.135f, 0.12f, 1.0f);
+		c[ImGuiCol_Button] = ImVec4(0.20f, 0.22f, 0.16f, 1.0f);
+		c[ImGuiCol_ButtonHovered] = greenHover;
+		c[ImGuiCol_Tab] = ImVec4(0.13f, 0.15f, 0.11f, 1.0f);
+		c[ImGuiCol_TabHovered] = ImVec4(0.30f, 0.46f, 0.16f, 0.90f);
+		c[ImGuiCol_TabActive] = ImVec4(0.22f, 0.34f, 0.12f, 1.0f);
+		c[ImGuiCol_TabUnfocused] = ImVec4(0.11f, 0.12f, 0.10f, 1.0f);
+		c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16f, 0.22f, 0.12f, 1.0f);
+		c[ImGuiCol_Separator] = ImVec4(0.0f, 0.0f, 0.0f, 0.50f);
+		c[ImGuiCol_TableHeaderBg] = ImVec4(0.16f, 0.18f, 0.13f, 1.0f);
+		c[ImGuiCol_TableBorderStrong] = ImVec4(0.0f, 0.0f, 0.0f, 0.60f);
+		c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+	} else {
+		const ImVec4 cream(1.0f, 0.99f, 0.96f, 1.0f);
+		const ImVec4 greenHover(0.80f, 0.90f, 0.62f, 1.0f);
+		c[ImGuiCol_Text] = ImVec4(0.22f, 0.21f, 0.19f, 1.0f);
+		c[ImGuiCol_TextDisabled] = ImVec4(0.52f, 0.51f, 0.48f, 1.0f);
+		c[ImGuiCol_WindowBg] = ImVec4(0.93f, 0.92f, 0.89f, 1.0f);
+		c[ImGuiCol_ChildBg] = ImVec4(1.0f, 0.99f, 0.96f, 0.50f);
+		c[ImGuiCol_PopupBg] = ImVec4(0.96f, 0.95f, 0.92f, 0.98f);
+		c[ImGuiCol_Border] = ImVec4(0.74f, 0.73f, 0.69f, 0.80f);
+		c[ImGuiCol_FrameBg] = cream;
+		c[ImGuiCol_FrameBgHovered] = greenHover;
+		c[ImGuiCol_FrameBgActive] = ImVec4(0.72f, 0.86f, 0.50f, 1.0f);
+		c[ImGuiCol_TitleBg] = ImVec4(0.86f, 0.85f, 0.81f, 1.0f);
+		c[ImGuiCol_TitleBgActive] = ImVec4(0.62f, 0.82f, 0.40f, 1.0f);
+		c[ImGuiCol_MenuBarBg] = ImVec4(0.89f, 0.88f, 0.85f, 1.0f);
+		c[ImGuiCol_Button] = ImVec4(0.84f, 0.83f, 0.79f, 1.0f);
+		c[ImGuiCol_ButtonHovered] = greenHover;
+		c[ImGuiCol_Tab] = ImVec4(0.84f, 0.83f, 0.79f, 1.0f);
+		c[ImGuiCol_TabHovered] = ImVec4(0.74f, 0.88f, 0.52f, 0.90f);
+		c[ImGuiCol_TabActive] = ImVec4(0.74f, 0.86f, 0.55f, 1.0f);
+		c[ImGuiCol_TabUnfocused] = ImVec4(0.88f, 0.87f, 0.83f, 1.0f);
+		c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.80f, 0.86f, 0.66f, 1.0f);
+		c[ImGuiCol_Separator] = ImVec4(0.0f, 0.0f, 0.0f, 0.20f);
+		c[ImGuiCol_TableHeaderBg] = ImVec4(0.86f, 0.87f, 0.80f, 1.0f);
+		c[ImGuiCol_TableBorderStrong] = ImVec4(0.0f, 0.0f, 0.0f, 0.30f);
+		c[ImGuiCol_TableRowBgAlt] = ImVec4(0.0f, 0.0f, 0.0f, 0.03f);
+	}
+
+	// Accent-driven interactive elements (shared by both modes).
 	c[ImGuiCol_ButtonActive] = accent;
+	c[ImGuiCol_Header] = ImVec4(accent.x, accent.y, accent.z, 0.40f);
+	c[ImGuiCol_HeaderHovered] = ImVec4(accent.x, accent.y, accent.z, 0.65f);
+	c[ImGuiCol_HeaderActive] = ImVec4(accent.x, accent.y, accent.z, 0.85f);
 	c[ImGuiCol_SliderGrab] = accent;
-	c[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.70f, 1.0f, 1.0f);
-	c[ImGuiCol_CheckMark] = ImVec4(0.45f, 0.72f, 1.0f, 1.0f);
-	c[ImGuiCol_Tab] = ImVec4(0.13f, 0.15f, 0.18f, 1.0f);
-	c[ImGuiCol_TabHovered] = ImVec4(0.26f, 0.40f, 0.60f, 0.9f);
-	c[ImGuiCol_TabActive] = ImVec4(0.20f, 0.32f, 0.48f, 1.0f);
-	c[ImGuiCol_TabUnfocused] = ImVec4(0.11f, 0.12f, 0.14f, 1.0f);
-	c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16f, 0.20f, 0.26f, 1.0f);
-	c[ImGuiCol_Separator] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
-	c[ImGuiCol_TableHeaderBg] = ImVec4(0.16f, 0.17f, 0.20f, 1.0f);
-	c[ImGuiCol_TableBorderStrong] = ImVec4(0.0f, 0.0f, 0.0f, 0.6f);
-	c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+	c[ImGuiCol_SliderGrabActive] = accentBright;
+	c[ImGuiCol_CheckMark] = accentBright;
+	c[ImGuiCol_SeparatorHovered] = ImVec4(accent.x, accent.y, accent.z, 0.70f);
+	c[ImGuiCol_SeparatorActive] = accent;
+	c[ImGuiCol_ResizeGripHovered] = ImVec4(accent.x, accent.y, accent.z, 0.55f);
+	c[ImGuiCol_ResizeGripActive] = accent;
+	c[ImGuiCol_TextSelectedBg] = ImVec4(accent.x, accent.y, accent.z, 0.40f);
+	c[ImGuiCol_DragDropTarget] = accentBright;
+	c[ImGuiCol_NavHighlight] = accent;
+	c[ImGuiCol_PlotLinesHovered] = accentBright;
+	c[ImGuiCol_PlotHistogramHovered] = accentBright;
+}
+
+void HalleyImGui::setColorScheme(bool dark)
+{
+	if (!context) {
+		return;
+	}
+	ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+	darkTheme = dark;
+	applyColors(dark);
 }
 
 uint64_t HalleyImGui::registerTexture(std::shared_ptr<const Texture> texture)

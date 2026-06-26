@@ -80,6 +80,12 @@ namespace Halley
 		bool wantCaptureMouse() const;
 		bool wantCaptureKeyboard() const;
 
+		// Swap between the dark and light colour palettes at runtime (spacing is unchanged). The
+		// spacious "ledSynthmaster"-inspired metrics are applied once at construction; this only
+		// re-tints the colours, so it's cheap to call from a debug toggle.
+		void setColorScheme(bool dark);
+		bool isDarkColorScheme() const { return darkTheme; }
+
 		// The opaque ImGuiContext* (so the owner can SetCurrentContext if it ever needs to).
 		void* getContext() const { return context; }
 
@@ -102,11 +108,14 @@ namespace Halley
 		std::vector<unsigned long long> vtxRemapGen; // generation stamp per original vertex
 		unsigned long long remapGen = 0;    // monotonic; never resets, so stamps never collide
 
+		bool darkTheme = true;              // current colour scheme (dark by default)
+
 		// Walk the current ImDrawData into the bound painter. Shared by render() (after ImGui::Render)
 		// and renderDrawData() (mirroring the same data into another target).
 		void drawCurrentDrawData(Painter& painter);
 
 		void buildFont(VideoAPI& video, const void* fontData, int fontDataSize, float fontPixelSize);
-		void applyTheme();
+		void applyTheme();             // spacious style metrics + the current colour palette
+		void applyColors(bool dark);   // colour palette only (dark or light)
 	};
 }
