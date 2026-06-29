@@ -24,8 +24,9 @@ namespace Halley {
         void makeTemporary();
 
         void setSwitchValue(const String& id, String value);
-        void setVariableValue(const String& id, float value);
+	    void setVariableValue(const String& id, float value);
     	const String& getSwitchValue(const String& id) const;
+        bool tryGetVariableValue(const String& id, float& dst) const;
         float getVariableValue(const String& id) const;
 
         void setRegion(AudioRegionId regionId);

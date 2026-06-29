@@ -686,6 +686,16 @@ const String& AudioEngine::getSwitchDefault(const String& switchId) const
 	return String::emptyString();
 }
 
+float AudioEngine::getGlobalVariableValue(const String& variableId, float defaultValue) const
+{
+	const auto iter = emitters.find(0);
+	if (iter == emitters.end()) {
+		return defaultValue;
+	}
+	float result = defaultValue;
+	return iter->second->tryGetVariableValue(variableId, result) ? result : defaultValue;
+}
+
 void AudioEngine::setEventLogging(std::optional<LoggerLevel> level, std::optional<String> prefix)
 {
 	eventLogging = level;

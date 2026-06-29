@@ -170,6 +170,9 @@ float AudioVoice::getUserGain() const
 
 void AudioVoice::setPitch(float pitch)
 {
+	if (std::abs(pitch - lastPitch) <= 0.001f) {
+		return;
+	}
 	if (resample || std::abs(pitch - 1.0f) > 0.001f) {
 		const auto freq = AudioConfig::sampleRate * pitch;
 		lastPitch = pitch;
@@ -205,11 +208,15 @@ void AudioVoice::update(gsl::span<const AudioChannelData> channels, const AudioP
 		}
 	}
 
-	// Doppler shift
+	static const String slowMoPitchVariable("slowMoPitch");
+	const float slowMoPitch = clamp(engine.getGlobalVariableValue(slowMoPitchVariable, 1.0f), 0.1f, 4.0f);
+	float pitch = basePitch * slowMoPitch;
+
 	if (dopplerScale > 0) {
 		const auto dopplerShift = sourcePos.getDopplerShift(listener) * dopplerScale;
-		setPitch(clamp((dopplerShift + 1.0f) * basePitch, 0.1f, 4.0f));
+		pitch = (dopplerShift + 1.0f) * basePitch * slowMoPitch;
 	}
+	setPitch(clamp(pitch, 0.1f, 4.0f));
 
 	// Find the target gain
 	const float gain = paused ? 0.0f : (baseGain * userGain * fader.getCurrentValue() * busGain);

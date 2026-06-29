@@ -19,6 +19,7 @@
 #include "halley/support/profiler.h"
 #include "halley/utils/algorithm.h"
 #include "halley/resources/resources.h"
+#include <string>
 
 using namespace Halley;
 
@@ -30,6 +31,34 @@ struct LineVertex {
 	Vector2f width;
 	char _padding[8];
 };
+
+namespace {
+	std::string makePainterDrawCallProfilerName(const Material& material, size_t numVertices, size_t numIndices, const Vector<String>& debugGroups)
+	{
+		std::string result = "paint mat=" + material.getDefinition().getName().cppStr();
+		if (material.getNumTextureUnits() > 0) {
+			if (const auto tex = material.getRawTexture(0)) {
+				result += " tex=" + tex->getAssetId().cppStr();
+			} else {
+				result += " tex=-";
+			}
+		} else {
+			result += " tex=-";
+		}
+		result += " v=" + std::to_string(numVertices);
+		result += " tri=" + std::to_string(numIndices / 3);
+		if (!debugGroups.empty()) {
+			result += " group=";
+			for (size_t i = 0; i < debugGroups.size(); ++i) {
+				if (i != 0) {
+					result += "/";
+				}
+				result += debugGroups[i].cppStr();
+			}
+		}
+		return result;
+	}
+}
 
 Painter::Painter(VideoAPI& video, Resources& resources)
 	: halleyGlobalMaterial(resources.get<MaterialDefinition>("Halley/MaterialBase")->createMaterialUnique(true))
@@ -803,7 +832,10 @@ void Painter::executeDrawPrimitives(const Material& material, size_t numVertices
 {
 	HalleyAssertDev(primitiveType == PrimitiveType::Triangle);
 
-	ProfilerEvent event(ProfilerEventType::PainterDrawCall, "", reinterpret_cast<uint64_t>(this));
+	const std::string profilerName = ProfilerCapture::get().isRecording()
+		? makePainterDrawCallProfilerName(material, numVertices, indices.size(), getPendingDebugGroupStack())
+		: std::string();
+	ProfilerEvent event(ProfilerEventType::PainterDrawCall, profilerName, reinterpret_cast<uint64_t>(&material));
 
 	size_t commandIdx = 0;
 	if (recordingSnapshot) {

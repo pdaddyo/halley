@@ -310,6 +310,10 @@ constexpr static bool alwaysLogType(ProfilerEventType type)
 	case ProfilerEventType::CoreVSync:
 	case ProfilerEventType::CoreFixedUpdate:
 	case ProfilerEventType::CoreVariableUpdate:
+	case ProfilerEventType::WorldSystemUpdate:
+	case ProfilerEventType::WorldSystemRender:
+	case ProfilerEventType::WorldSystemMessages:
+	case ProfilerEventType::PainterDrawCall:
 	case ProfilerEventType::GPU:
 		return true;
 	default:

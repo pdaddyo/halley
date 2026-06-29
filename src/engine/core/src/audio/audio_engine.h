@@ -86,6 +86,7 @@ namespace Halley {
 		void onVoiceFinished(const AudioVoice& voice);
 
 		const String& getSwitchDefault(const String& switchId) const;
+		float getGlobalVariableValue(const String& variableId, float defaultValue) const;
 
 		void setEventLogging(std::optional<LoggerLevel> level, std::optional<String> prefix);
 

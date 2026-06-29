@@ -102,11 +102,18 @@ const String& AudioEmitter::getSwitchValue(const String& id) const
 
 float AudioEmitter::getVariableValue(const String& id) const
 {
+	float result = 0.0f;
+	return tryGetVariableValue(id, result) ? result : 0.0f;
+}
+
+bool AudioEmitter::tryGetVariableValue(const String& id, float& dst) const
+{
 	const auto iter = variableValues.find(id);
-	if (iter == variableValues.end()) {
-		return fallback ? fallback->getVariableValue(id) : 0;
+	if (iter != variableValues.end()) {
+		dst = iter->second;
+		return true;
 	}
-	return iter->second;
+	return fallback ? fallback->tryGetVariableValue(id, dst) : false;
 }
 
 void AudioEmitter::setRegion(AudioRegionId regionId)
