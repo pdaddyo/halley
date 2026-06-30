@@ -65,6 +65,8 @@ namespace Halley {
 
     class EntityNetworkRemotePeer {
         constexpr static Time maxSendInterval = 1.0;
+        constexpr static int initialCreateBudget = 4;
+        constexpr static size_t initialCreateByteBudget = 8 * 1024;
     	
     public:
         EntityNetworkRemotePeer(EntityNetworkSession& parentSession, NetworkSession::PeerId peerId);
@@ -140,13 +142,14 @@ namespace Halley {
         uint16_t nextId = 0;
 
         Time timeSinceSend = 0;
+        Time timeSinceInitialCreateBatch = maxSendInterval;
     	bool log = false;
 
     	static thread_local EntityNetworkSerialize fastSerializer;
         static thread_local Bytes fastUpdateOutboundData;
 
         uint16_t assignId();
-        void sendCreateEntity(const EntityRef& entity);
+        size_t sendCreateEntity(const EntityRef& entity);
         bool sendUpdateEntity(Time t, int32_t sessionTimestamp, OutboundEntity& remote, EntityRef entity);
         void sendDestroyEntity(OutboundEntity& remote, EntityId entityId);
         void sendKeepAlive();

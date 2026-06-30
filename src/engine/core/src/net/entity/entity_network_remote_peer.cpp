@@ -53,6 +53,9 @@ SendEntitiesStats EntityNetworkRemotePeer::sendEntities(Time t, uint8_t myPeerId
 	}
 
 	timeSinceSend += t;
+	if (!hasSentData) {
+		timeSinceInitialCreateBatch += t;
+	}
 
 	// Timestamp entity updates with the "network time" we estimate the remote peer is at right now.
 	int32_t sessionTimestamp = parentSession->getSession().getPeerSessionTimeMs(peerId);
@@ -153,36 +156,62 @@ SendEntitiesStats EntityNetworkRemotePeer::sendEntities(Time t, uint8_t myPeerId
 	}
 
 	// Update existing entities
-	for (auto& [e, oe] : toUpdate) {
-		const bool sent = sendUpdateEntity(t, sessionTimestamp, *oe, e);
-		++stats.nUpdateChecked;
-		//Logger::logDev("Sending " + e.getName(), true);
-		if (sent) {
-			++stats.nUpdated;
+	if (hasSentData) {
+		for (auto& [e, oe] : toUpdate) {
+			const bool sent = sendUpdateEntity(t, sessionTimestamp, *oe, e);
+			++stats.nUpdateChecked;
+			//Logger::logDev("Sending " + e.getName(), true);
+			if (sent) {
+				++stats.nUpdated;
+			}
 		}
 	}
 
-	// Create new entities
-	for (const auto& e: toCreate) {
-		if (e.hasParent()) {
-			// NB: These checks defer create messages for child entities if the message to
-			// create their parent entity has not been sent yet. Tries to avoid problems
-			// with order of creation on the receiver side - there's code to attach children
-			// to their parents post-creation, but that doesn't seem to resolve all our edge
-			// cases.
-			//
-			// This must NOT be done for non-networked parent entities.
-			//
-			// Simply skipping the sendCreateEntity() call works here because the alive check
-			// will just pick them up again to be sent on the next update.
-			if (const auto parent = e.getParent(); parent.hasComponentInAncestors<NetworkComponent>()) {
-				if (outboundEntities.find(parent.getEntityId()) == outboundEntities.end()) {
-					continue;
+	// Create new entities. A freshly joined peer can be missing the whole world;
+	// stream that initial snapshot over several ticks so platform transports with
+	// finite send queues do not reject the burst.
+	bool deferredCreates = false;
+	int createsSentThisTick = 0;
+	size_t createBytesThisTick = 0;
+	if (!hasSentData && !toCreate.empty() && timeSinceInitialCreateBatch < parentSession->getMinSendInterval()) {
+		deferredCreates = true;
+	} else {
+		for (const auto& e: toCreate) {
+			if (!hasSentData) {
+				if (createsSentThisTick >= initialCreateBudget) {
+					deferredCreates = true;
+					break;
+				}
+				if (createsSentThisTick > 0 && createBytesThisTick >= initialCreateByteBudget) {
+					deferredCreates = true;
+					break;
 				}
 			}
+			if (e.hasParent()) {
+				// NB: These checks defer create messages for child entities if the message to
+				// create their parent entity has not been sent yet. Tries to avoid problems
+				// with order of creation on the receiver side - there's code to attach children
+				// to their parents post-creation, but that doesn't seem to resolve all our edge
+				// cases.
+				//
+				// This must NOT be done for non-networked parent entities.
+				//
+				// Simply skipping the sendCreateEntity() call works here because the alive check
+				// will just pick them up again to be sent on the next update.
+				if (const auto parent = e.getParent(); parent.hasComponentInAncestors<NetworkComponent>()) {
+					if (outboundEntities.find(parent.getEntityId()) == outboundEntities.end()) {
+						deferredCreates = true;
+						continue;
+					}
+				}
+			}
+			createBytesThisTick += sendCreateEntity(e);
+			++createsSentThisTick;
+			++stats.nCreated;
 		}
-		sendCreateEntity(e);
-		++stats.nCreated;
+		if (!hasSentData && createsSentThisTick > 0) {
+			timeSinceInitialCreateBatch = 0;
+		}
 	}
 
 	std_ex::erase_if_value(outboundEntities, [](const OutboundEntity& e) { return !e.alive; });
@@ -191,7 +220,7 @@ SendEntitiesStats EntityNetworkRemotePeer::sendEntities(Time t, uint8_t myPeerId
 		sendKeepAlive();
 	}
 	
-	if (!hasSentData) {
+	if (!hasSentData && !deferredCreates) {
 		hasSentData = true;
 		onFirstDataBatchSent();
 	}
@@ -283,7 +312,7 @@ uint16_t EntityNetworkRemotePeer::assignId()
 	throw Exception("Unable to allocate network id for entity.", HalleyExceptions::Network);
 }
 
-void EntityNetworkRemotePeer::sendCreateEntity(const EntityRef& entity)
+size_t EntityNetworkRemotePeer::sendCreateEntity(const EntityRef& entity)
 {
 	OutboundEntity result;
 
@@ -302,24 +331,28 @@ void EntityNetworkRemotePeer::sendCreateEntity(const EntityRef& entity)
 		}
 
 		auto bytes = Serializer::toBytes(info, parentSession->getByteSerializationOptions());
+		const auto byteCount = bytes.size();
 		send(EntityNetworkMessageCreate(result.networkId, std::move(bytes), entity.getWorldPartition(), true));
 
 		// Need to flag this one though, so that any host-side changes are sent through a first update.
 		// Without this, the peer wouldn't be notified about any modifications until the next actual change.
 		result.forceNextFastUpdate = true;
+		outboundEntities[entity.getEntityId()] = std::move(result);
+		return byteCount;
 	} else {
 		auto deltaData = parentSession->getFactory().entityDataToPrefabDelta(result.data, entity.getPrefab(), parentSession->getEntityDeltaOptions());
 
 		auto bytes = Serializer::toBytes(deltaData, parentSession->getByteSerializationOptions());
+		const auto byteCount = bytes.size();
 		//Logger::logDev("Send Create: " + entity.getName() + " (" + entity.getInstanceUUID() + ") to peer " + toString(static_cast<int>(peerId)) + " (" + toString(bytes.size()) + " B):\n" + deltaData.toYAML() + "\n");
 		//Logger::logDev("Send Create: " + entity.getName() + " (" + entity.getInstanceUUID() +
 		//	") with EntityNetworkId (" + result.networkId +
 		//	") to peer " + toString(static_cast<int>(peerId)) + " (" + toString(bytes.size()) + " B)");
 
 		send(EntityNetworkMessageCreate(result.networkId, std::move(bytes), entity.getWorldPartition(), false));
+		outboundEntities[entity.getEntityId()] = std::move(result);
+		return byteCount;
 	}
-
-	outboundEntities[entity.getEntityId()] = std::move(result);
 }
 
 bool EntityNetworkRemotePeer::sendUpdateEntity(Time t, int32_t sessionTimestamp, OutboundEntity& remote, EntityRef entity)

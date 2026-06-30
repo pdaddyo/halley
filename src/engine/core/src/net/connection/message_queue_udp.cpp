@@ -25,13 +25,43 @@ void MessageQueueUDP::sendAll()
         return;
     }
 
+    constexpr size_t maxSubPacketsInFlight = 32;
+    constexpr size_t maxSubPacketsPerFlush = 8;
+    constexpr size_t maxLogicalPacketsPerFlush = 8;
+
+    size_t sentQueued = 0;
+    size_t sentSubPackets = 0;
+    size_t sentLogicalPackets = 0;
     for (auto& p : outboundQueued) {
+        const size_t nSubPackets = connection->estimateNumOutboundPackets(p.packet.getSize());
+        const bool forceOne = sentLogicalPackets == 0 && connection->getNumOutboundPacketsInFlight() == 0;
+        if (!forceOne) {
+            if (sentLogicalPackets >= maxLogicalPacketsPerFlush) {
+                break;
+            }
+            if (sentSubPackets + nSubPackets > maxSubPacketsPerFlush) {
+                break;
+            }
+            if (connection->getNumOutboundPacketsInFlight() + nSubPackets > maxSubPacketsInFlight) {
+                break;
+            }
+        }
+
         connection->send(IConnection::TransmissionType::Unreliable, p.packet);
+        sentSubPackets += nSubPackets;
+        ++sentLogicalPackets;
+        ++sentQueued;
+
+        if (connection->getStatus() != ConnectionStatus::Connected) {
+            break;
+        }
     }
 
-    connection->flushOutboundQueue();
+    if (sentQueued > 0) {
+        connection->flushOutboundQueue();
+        outboundQueued.erase(outboundQueued.begin(), outboundQueued.begin() + static_cast<ptrdiff_t>(sentQueued));
+    }
 
-    outboundQueued.clear();
 }
 
 Vector<InboundNetworkPacket> MessageQueueUDP::receivePackets()

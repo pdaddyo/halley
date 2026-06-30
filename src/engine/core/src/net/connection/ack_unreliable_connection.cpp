@@ -7,6 +7,8 @@
 #include "halley/support/logger.h"
 #include "halley/text/string_converter.h"
 
+#include <algorithm>
+
 using namespace Halley;
 
 AckUnreliableConnection::AckUnreliableConnection(std::shared_ptr<IConnection> parent, INetworkServiceStatsListener& networkStatsListener)
@@ -375,6 +377,26 @@ bool AckUnreliableConnection::tryReceiveSmallPacket(InboundNetworkPacket& packet
 size_t AckUnreliableConnection::getMaxUnreliablePacketSize() const
 {
 	return maxPacketSize - headerSize;
+}
+
+size_t AckUnreliableConnection::getNumOutboundPacketsInFlight() const
+{
+	size_t result = 0;
+	for (size_t i = 0; i < 256; ++i) {
+		if (outbound.packets[i].seqIdx != 0xffff) {
+			++result;
+		}
+	}
+	return result;
+}
+
+size_t AckUnreliableConnection::estimateNumOutboundPackets(size_t payloadSize) const
+{
+	if (payloadSize < 256) {
+		return 1;
+	}
+	const size_t maxSize = maxPacketSize - headerSize;
+	return std::max<size_t>(1, (payloadSize + maxSize - 1) / maxSize);
 }
 
 void AckUnreliableConnection::onSend(gsl::span<const std::byte> packet)
