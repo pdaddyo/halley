@@ -121,8 +121,17 @@ SendEntitiesStats EntityNetworkRemotePeer::sendEntities(Time t, uint8_t myPeerId
 		if (entry.alwaysSend || parentSession->isEntityInView(entity, clientData, peerId)) {
 			++stats.nCheckedRegular;
 			if (const auto iter = outboundEntities.find(entry.entityId); iter == outboundEntities.end()) {
-				parentSession->setupOutboundInterpolators(entity);
-				toCreate.push_back(entity);
+				// Pace entity creation: cap how many brand-new entities we create per send tick.
+				// A joining peer needs the whole world, which is otherwise created in a single tick;
+				// that burst overflows AckUnreliableConnection's fixed 256-slot outbound window
+				// (which then close()s the connection) and the Steam send buffer, dropping the peer.
+				// Deferred entities are NOT added to outboundEntities, so they reappear here next
+				// tick and stream out over several ticks. During normal play only a handful of
+				// entities spawn per tick, so this cap never bites.
+				if (toCreate.size() < maxEntityCreatesPerSend) {
+					parentSession->setupOutboundInterpolators(entity);
+					toCreate.push_back(entity);
+				}
 			} else {
 				HalleyAssertDev(!iter->second.hasAuthorityOnly);
 				iter->second.alive = true;

@@ -65,7 +65,11 @@ namespace Halley {
 
     class EntityNetworkRemotePeer {
         constexpr static Time maxSendInterval = 1.0;
-    	
+        // Max brand-new entities created per send tick. Paces the initial world snapshot a
+        // joining peer receives so it streams over several ticks instead of bursting in one,
+        // which would overflow the outbound packet window / send buffer and drop the peer.
+        constexpr static size_t maxEntityCreatesPerSend = 16;
+
     public:
         EntityNetworkRemotePeer(EntityNetworkSession& parentSession, NetworkSession::PeerId peerId);
 
