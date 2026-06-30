@@ -359,7 +359,12 @@ std::unique_ptr<TextureRenderTarget> DX12Video::createTextureRenderTarget()
 
 std::unique_ptr<ScreenRenderTarget> DX12Video::createScreenRenderTarget()
 {
-    auto view = Rect4i(Vector2i(), swapChainRenderSize);
+    return createScreenRenderTarget(swapChainRenderSize);
+}
+
+std::unique_ptr<ScreenRenderTarget> DX12Video::createScreenRenderTarget(Vector2i drawableSize)
+{
+    auto view = Rect4i(Vector2i(), drawableSize);
     return std::make_unique<DX12ScreenRenderTarget>(*this, view);
 }
 

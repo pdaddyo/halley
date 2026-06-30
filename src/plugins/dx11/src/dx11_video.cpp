@@ -171,7 +171,12 @@ std::unique_ptr<TextureRenderTarget> DX11Video::createTextureRenderTarget()
 
 std::unique_ptr<ScreenRenderTarget> DX11Video::createScreenRenderTarget()
 {
-	auto view = Rect4i(Vector2i(), window->getWindowRect().getSize());
+	return createScreenRenderTarget(window->getWindowRect().getSize());
+}
+
+std::unique_ptr<ScreenRenderTarget> DX11Video::createScreenRenderTarget(Vector2i drawableSize)
+{
+	auto view = Rect4i(Vector2i(), drawableSize);
 	if (swapChain->getSize() != view.getSize()) {
 		swapChain->resize(view.getSize());
 	}
