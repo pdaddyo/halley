@@ -128,6 +128,14 @@ namespace Halley
 		virtual std::optional<String> getConnectCLIString() const { return {}; }
 	};
 
+	struct MultiplayerLobbyBrowserEntry {
+		String lobbyId;
+		String hostId;
+		String hostName;
+		int currentPlayers = 0;
+		int maxPlayers = 0;
+	};
+
 	// This is the join callback, see PlatformAPI's method for more details
 	struct PlatformJoinCallbackParameters {
 		// Fill these as necessary
@@ -299,5 +307,8 @@ namespace Halley
 
 		virtual bool useSystemDisplaySize() { return false; }
 		virtual Vector2i getSystemDisplaySize() { return Vector2i(0, 0); }
+
+		virtual Vector<MultiplayerLobbyBrowserEntry> getFriendMultiplayerLobbies() { return {}; }
+		virtual bool joinMultiplayerLobby(const String& lobbyId) { return false; }
 	};
 }
