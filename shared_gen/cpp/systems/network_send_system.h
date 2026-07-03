@@ -3,9 +3,9 @@
 
 #include <halley.hpp>
 
-#include "halley/entity/services/dev_service.h"
 #include "halley/entity/services/session_service.h"
 #include "halley/entity/services/screen_service.h"
+#include "halley/entity/services/dev_service.h"
 
 #include "components/network_component.h"
 

@@ -3,8 +3,8 @@
 
 #include <halley.hpp>
 
-#include "halley/entity/services/dev_service.h"
 #include "halley/entity/services/scripting_service.h"
+#include "halley/entity/services/dev_service.h"
 
 #include "components/scriptable_component.h"
 #include "halley/entity/components/transform_2d_component.h"
