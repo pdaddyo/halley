@@ -71,12 +71,15 @@ void VideoOpenGL::setWindow(WindowDefinition&& windowDefinition)
 {
 	// Initialize video mode
 	if (!initialized) {
+		const bool showWindowOnCreation = windowDefinition.isShowOnCreation();
 		window = system.createWindow(windowDefinition);
 		initOpenGL();
 		window->setVsync(useVsync);
 
 		clearScreen();
-		window->show();
+		if (showWindowOnCreation) {
+			window->show();
+		}
 		flip();
 		startLoaderThread();
 		initialized = true;
