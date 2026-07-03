@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <map>
 #include <mutex>
 #include <halley/data_structures/flat_map.h>
@@ -53,6 +54,7 @@ namespace Halley {
 		void clearScreen();
 		void startLoaderThread();
 		void flip();
+		void maybeDumpFrame();
 
 		void setupDebugCallback();
 		void setUpEnumMap();
@@ -71,5 +73,13 @@ namespace Halley {
 				
 		std::shared_ptr<Window> window;
 		bool useVsync = false;
+
+		// Env-gated backbuffer dump (see maybeDumpFrame): lets a hidden/occluded window be
+		// smoke-tested by reading GL_BACK before the swap, independent of DWM composition.
+		bool frameDumpChecked = false;
+		String frameDumpDir;
+		double frameDumpInterval = 5.0;
+		int frameDumpCount = 0;
+		std::chrono::steady_clock::time_point frameDumpNext;
 	};
 }

@@ -13,6 +13,9 @@
 #include "structured_buffer_opengl.h"
 #include "halley/game/game_platform.h"
 #include "halley/graphics/material/uniform_type.h"
+#include "halley/file_formats/image.h"
+#include <cstdlib>
+#include <fstream>
 using namespace Halley;
 
 #ifdef _MSC_VER
@@ -335,8 +338,72 @@ void VideoOpenGL::startRender()
 
 void VideoOpenGL::finishRender()
 {
+	maybeDumpFrame();
 	flip();
 	glCheckError();
+}
+
+// Env-gated frame dump: HALLEY_FRAME_DUMP_DIR=<dir> saves frame_<n>.png there every
+// HALLEY_FRAME_DUMP_INTERVAL seconds (default 5). Reads GL_BACK before the swap, so it
+// captures correctly even when the window is hidden, occluded, or off-screen (no DWM
+// dependency) — the enabler for headless smoke tests that never disturb the desktop.
+void VideoOpenGL::maybeDumpFrame()
+{
+	if (!frameDumpChecked) {
+		frameDumpChecked = true;
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4996) // getenv: read-only env probe, the _dupenv_s dance buys nothing here
+#endif
+		if (const char* dir = std::getenv("HALLEY_FRAME_DUMP_DIR")) {
+			frameDumpDir = dir;
+			if (const char* iv = std::getenv("HALLEY_FRAME_DUMP_INTERVAL")) {
+				frameDumpInterval = std::max(0.25, std::atof(iv));
+			}
+			frameDumpNext = std::chrono::steady_clock::now();
+		}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+	}
+	if (frameDumpDir.isEmpty() || !window) {
+		return;
+	}
+	const auto now = std::chrono::steady_clock::now();
+	if (now < frameDumpNext) {
+		return;
+	}
+	frameDumpNext = now + std::chrono::milliseconds(static_cast<long long>(frameDumpInterval * 1000.0));
+
+	const Vector2i size = window->getDrawableSize();
+	if (size.x <= 0 || size.y <= 0) {
+		return;
+	}
+	Vector<unsigned char> buffer;
+	buffer.resize(static_cast<size_t>(size.x) * static_cast<size_t>(size.y) * 4);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, size.x, size.y, GL_RGBA, GL_UNSIGNED_BYTE, buffer.data());
+	glCheckError();
+
+	// GL rows are bottom-up; flip into the image and force opaque alpha.
+	Image img(Image::Format::RGBA, size, false);
+	auto dst = img.getPixels4BPP();
+	for (int y = 0; y < size.y; ++y) {
+		const unsigned char* src = buffer.data() + static_cast<size_t>(size.y - 1 - y) * static_cast<size_t>(size.x) * 4;
+		int* row = dst.data() + static_cast<size_t>(y) * static_cast<size_t>(size.x);
+		for (int x = 0; x < size.x; ++x) {
+			const unsigned int px = static_cast<unsigned int>(src[x * 4])
+			    | (static_cast<unsigned int>(src[x * 4 + 1]) << 8)
+			    | (static_cast<unsigned int>(src[x * 4 + 2]) << 16)
+			    | 0xFF000000u;
+			row[x] = static_cast<int>(px);
+		}
+	}
+	const Bytes png = img.savePNGToBytes(false);
+	const String path = frameDumpDir + "/frame_" + toString(frameDumpCount++) + ".png";
+	std::ofstream fp(path.cppStr(), std::ios::binary);
+	fp.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
 }
 
 void VideoOpenGL::flip()
