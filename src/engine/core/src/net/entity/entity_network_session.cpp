@@ -654,7 +654,18 @@ const IByteDataInterpolatorSet* EntityNetworkSession::getByteDataInterpolatorSet
 
 Time EntityNetworkSession::getMinSendInterval() const
 {
-	return 0.05;
+	// Stranded (pdaddyo fork): 60Hz, up from the stock 20Hz (0.05). This gates EVERY outbound
+	// entity update per-peer (entity_network_remote_peer.cpp), so it governs both the JOIN
+	// client's input->host leg AND the host's state->client leg. At 20Hz a fired shot / a movement
+	// change round-trips through up to ~100ms of pure send batching before the client sees the
+	// authoritative result; 60Hz cuts each gated leg to ~16ms and minimises the per-ack
+	// prediction-reconciliation error, tightening both shooting and movement on LAN co-op (<=4
+	// peers, so the extra bandwidth is free). NOTE: 60Hz triples the host's per-frame entity
+	// serialize/fan-out vs 20Hz -- watch host frame cost in busy scenes (F1 Performance / ECS-Engine
+	// panels); if it bites, drop this to 1.0/30.0 or decouple the tiny input controller to 60Hz while
+	// bulk state stays 30Hz. Receive-side smoothers are retuned to match: net_session.h
+	// LerpDataInterpolator, client_smooth_system.cpp ease/kMaxLead. See docs/halley-engine-patches.diff.
+	return 1.0 / 60.0;
 }
 
 void EntityNetworkSession::onRemoteEntityCreated(EntityRef entity, NetworkSession::PeerId peerId)
